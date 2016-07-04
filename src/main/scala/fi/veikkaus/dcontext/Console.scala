@@ -3,11 +3,12 @@ package fi.veikkaus.dcontext
 /**
   * Created by arau on 24.5.2016.
   */
-import java.io.{BufferedReader, File, InputStreamReader}
+import java.io.{File, PrintWriter}
 import java.util.regex.Pattern
 
-import collection.JavaConverters._
 import scala.collection.JavaConversions._
+
+import jline.console.ConsoleReader
 
 /**
   * Created by arau on 24.5.2016.
@@ -16,8 +17,8 @@ class Console(var staticLayer : DContext = DContext.empty) {
 
   private val classLoader = new DynamicClassLoader()
 
-  val in = System.in
-  val out = System.out
+  val reader = new ConsoleReader()
+  val out = new PrintWriter(reader.getOutput)
 
   val quit = new Object // unique key
 
@@ -32,18 +33,12 @@ class Console(var staticLayer : DContext = DContext.empty) {
     staticLayer ++= c
   }
   def console = {
-    val reader: BufferedReader = new BufferedReader(new InputStreamReader(in))
-    var oldLine: String = null
+    reader.setPrompt("$ ")
+
     var line: String = null
     out.println("type -h for instructions:")
-    while ( {
-      out.print("$ "); line = reader.readLine.trim; line != "-q"
-    }) {
-      if (line.length == 0 && oldLine != null) {
-        line = oldLine
-      }
+    while ( { line = reader.readLine().trim; line != null && line != "-q"} ) {
       process(Array(line))
-      oldLine = line
     }
   }
 

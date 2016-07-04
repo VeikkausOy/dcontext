@@ -9,7 +9,7 @@ val scalaMajorVersion = "2.10"
 
 version := "0.2-SNAPSHOT"
 
-libraryDependencies ++= Seq()
+libraryDependencies ++= Seq("jline" % "jline" % "2.14")
 
 lazy val testsh =
   taskKey[Unit]("interactive shell for running tasks in a JVM instance, while code may be modified")
