@@ -186,6 +186,13 @@ public class DynamicClassLoader extends ClassLoader {
         }
     }
 
+    public void reloadAll() throws ClassNotFoundException {
+        for (ReloadableClassLoader loader : loaders) {
+            unload(loader);
+            reload(loader);
+        }
+    }
+
     /**
      * Get a resource from added source directories.
      *

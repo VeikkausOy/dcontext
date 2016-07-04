@@ -46,6 +46,10 @@ class Console(var staticLayer : DContext = DContext.empty) {
     tasks.foreach{ e => out.println(f"${e._1}%-24s ${e._2.help()}") }
   }
 
+  def reload : Unit = {
+    classLoader.reloadAll()
+  }
+
   def classLoaderInfo: Unit = {
     classLoader.loadedClasses.foreach { e =>
       out.println(f"${e._1}%-24s ${if (e._2.isChanged) "dirty" else "ok"}")
@@ -82,6 +86,7 @@ class Console(var staticLayer : DContext = DContext.empty) {
 
   val tasks = Seq[(String, HelpfulContextTask)](
     ("-h", dtask("this help",            (c, args) => printHelp)),
+    ("--reload", dtask("reload classes",  (c, args) => reload)),
     ("-q", dtask("quits console",        (c, args) => quit)),
     ("-p", dtask("adds classpath",       (c, args) => args.foreach(addClassPaths(_)))),
     ("-m", dtask("mounts context",       (c, args) => args.foreach(mount(_)))),
