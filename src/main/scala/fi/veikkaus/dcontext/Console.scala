@@ -9,6 +9,7 @@ import java.util.regex.Pattern
 import scala.collection.JavaConversions._
 
 import jline.console.ConsoleReader
+import jline.console.completer.{Completer, StringsCompleter}
 
 /**
   * Created by arau on 24.5.2016.
@@ -18,6 +19,7 @@ class Console(var staticLayer : DContext = DContext.empty) {
   private val classLoader = new DynamicClassLoader()
 
   val reader = new ConsoleReader()
+  var contextCompleter: Option[Completer] = None
   val out = new PrintWriter(reader.getOutput)
 
   val quit = new Object // unique key
@@ -103,10 +105,19 @@ class Console(var staticLayer : DContext = DContext.empty) {
 
   def close() : Unit = dataLayer.close
 
+  def updateContextCompleter(): Unit = {
+    val newCompleter = new StringsCompleter(context.keySet)
+    contextCompleter.foreach(c => reader.removeCompleter(c))
+    reader.addCompleter(newCompleter)
+  }
+
   @throws[Exception]
   def process(args: Array[String]) {
     val oldCl = Thread.currentThread().getContextClassLoader
     Thread.currentThread().setContextClassLoader(classLoader)
+
+    updateContextCompleter()
+
     try {
       args.foreach { arg =>
         val parts = arg.trim().split(" ")
