@@ -346,7 +346,7 @@ public class DynamicClassLoader extends ClassLoader {
 
             // check if class has been updated
             Class clz = loadClass(backendClassName);
-            if (backend.getClass() != clz) {
+            if (clz != null && backend.getClass() != clz) {
                 info("updating instance");
                 if (backend instanceof Closeable) {
                     ((Closeable)backend).close();
