@@ -38,7 +38,9 @@ class Console(var staticLayer : DContext = DContext.empty) {
     var line: String = null
     out.println("type -h for instructions:")
     while ( { line = reader.readLine().trim; line != null && line != "-q"} ) {
-      process(Array(line))
+      if (line != "") {
+        process(Array(line))
+      }
     }
   }
 
