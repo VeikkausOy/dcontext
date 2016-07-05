@@ -6,6 +6,8 @@ import java.io.Closeable
   * Created by arau on 28.6.2016.
   */
 trait DContext extends java.io.Closeable {
+  def system = get[DSystem](DContext.systemId)
+
   def get[T](name:String) : Option[T]
   def getType(name:String) : Option[Class[_]]
   def keySet : scala.collection.Set[String]
@@ -16,6 +18,8 @@ trait DContext extends java.io.Closeable {
 }
 
 object DContext {
+
+  def systemId = ".system"
 
   def empty = new DContext {
     override def getType(name: String) = None

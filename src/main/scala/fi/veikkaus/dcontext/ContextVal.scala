@@ -21,5 +21,10 @@ class ContextVal[T <: Object](key:String, make: (MutableDContext)=> (T, Option[j
     }
   }
 
+  def isDefined(implicit c:MutableDContext) = c.get[T](key).isDefined
+  def reset(implicit c:MutableDContext) = {
+    if (isDefined) c.remove(key)
+  }
+
 }
 

@@ -14,15 +14,37 @@ import jline.console.completer.{Completer, StringsCompleter}
 /**
   * Created by arau on 24.5.2016.
   */
-class Console(var staticLayer : DContext = DContext.empty) {
+class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
 
-  private val classLoader = new DynamicClassLoader()
+  val classLoader = new DynamicClassLoader()
 
   val reader = new ConsoleReader()
   var contextCompleter: Option[Completer] = None
   val out = new PrintWriter(reader.getOutput)
 
   val quit = new Object // unique key
+
+  val tasks = Seq[(String, HelpfulContextTask)](
+    ("-h", dtask("this help",            (c, args) => printHelp)),
+    ("--reload", dtask("reload classes",  (c, args) => reload)),
+    ("-q", dtask("quits console",        (c, args) => quit)),
+    ("-p", dtask("adds classpath",       (c, args) => args.foreach(addClassPaths(_)))),
+    ("-m", dtask("mounts context",       (c, args) => args.foreach(mount(_)))),
+    ("-l", dtask("lists context values", list)),
+    ("-i", dtask("interactive console",  (c, args) => console)),
+    ("-r", dtask("remove data (e.g. '-r fooX' or '-r .*')",          (c, args) => remove(args))),
+    ("-d", dtask("display class loader infor", (c, args) => classLoaderInfo))
+  )
+
+  val systemLayer =
+    DContext(
+      tasks.map(e => (e._1, e._2)).toMap
+      ++ Map(DContext.systemId -> Console.this))
+
+  val dataLayer = MutableDContext.apply
+
+  def context =
+    (systemLayer ++ staticLayer) ++ dataLayer
 
   def addClassPaths(classPaths:String) = {
     val files = classPaths.split(":").map(new File(_))
@@ -55,14 +77,15 @@ class Console(var staticLayer : DContext = DContext.empty) {
   }
 
   def classLoaderInfo: Unit = {
+    val now = System.currentTimeMillis()
     classLoader.loadedClasses.foreach { e =>
-      out.println(f"${e._1}%-24s ${if (e._2.isChanged) "dirty" else "ok"}")
+      out.println(f"${e._1}%-60s ${(now-e._2.lastModified)/1000}s old")
     }
   }
 
   def list(c:MutableDContext, args:Array[String]) {
     val c = (staticLayer ++ dataLayer)
-    c.keySet.foreach { key =>
+    c.keySet.toArray.sorted.foreach { key =>
       val v = c.getType(key).get
       if (v.isAssignableFrom(classOf[HelpfulContextTask])) {
         out.println(f"${key}%-24s ${c(key).asInstanceOf[HelpfulContextTask].help()}")
@@ -87,26 +110,6 @@ class Console(var staticLayer : DContext = DContext.empty) {
       }
       def help = h
     }
-
-  val tasks = Seq[(String, HelpfulContextTask)](
-    ("-h", dtask("this help",            (c, args) => printHelp)),
-    ("--reload", dtask("reload classes",  (c, args) => reload)),
-    ("-q", dtask("quits console",        (c, args) => quit)),
-    ("-p", dtask("adds classpath",       (c, args) => args.foreach(addClassPaths(_)))),
-    ("-m", dtask("mounts context",       (c, args) => args.foreach(mount(_)))),
-    ("-l", dtask("lists context values", list)),
-    ("-i", dtask("interactive console",  (c, args) => console)),
-    ("-r", dtask("remove data (e.g. '-r fooX' or '-r .*')",          (c, args) => remove(args))),
-    ("-d", dtask("display class loader infor", (c, args) => classLoaderInfo))
-  )
-
-  val systemLayer =
-    DContext(tasks.map(e => (e._1, e._2)).toMap)
-
-  val dataLayer = MutableDContext.apply
-
-  def context =
-    (systemLayer ++ staticLayer) ++ dataLayer
 
   def close() : Unit = dataLayer.close
 
