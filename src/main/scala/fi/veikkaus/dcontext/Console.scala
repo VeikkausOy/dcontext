@@ -69,7 +69,7 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
   }
 
   def printHelp {
-    tasks.foreach{ e => out.println(f"${e._1}%-24s ${e._2.help()}") }
+    tasks.foreach{ e => out.println(f"${e._1}%-30s ${e._2.help()}") }
   }
 
   def reload : Unit = {
@@ -88,9 +88,9 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
     c.keySet.toArray.sorted.foreach { key =>
       val v = c.getType(key).get
       if (v.isAssignableFrom(classOf[HelpfulContextTask])) {
-        out.println(f"${key}%-24s ${c(key).asInstanceOf[HelpfulContextTask].help()}")
+        out.println(f"${key}%-30s ${c(key).asInstanceOf[HelpfulContextTask].help()}")
       } else {
-        out.println(f"${key}%-24s ${v.getName}")
+        out.println(f"${key}%-30s ${v.getName}")
       }
     }
   }
