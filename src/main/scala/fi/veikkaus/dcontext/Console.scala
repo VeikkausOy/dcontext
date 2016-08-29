@@ -7,9 +7,9 @@ import java.io.{File, PrintWriter}
 import java.util.regex.Pattern
 
 import scala.collection.JavaConversions._
-
 import jline.console.ConsoleReader
 import jline.console.completer.{Completer, StringsCompleter}
+import jline.console.history.FileHistory
 
 /**
   * Created by arau on 24.5.2016.
@@ -21,6 +21,9 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
   val reader = new ConsoleReader()
   var contextCompleter: Option[Completer] = None
   val out = new PrintWriter(reader.getOutput)
+
+  val history = new FileHistory(new File(".dcontext_history"))
+  reader.setHistory(history)
 
   val quit = new Object // unique key
 
@@ -111,7 +114,10 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
       def help = h
     }
 
-  def close() : Unit = dataLayer.close
+  def close() : Unit = {
+    history.flush()
+    dataLayer.close
+  }
 
   def updateContextCompleter(): Unit = {
     val newCompleter = new StringsCompleter(context.keySet)
@@ -152,12 +158,21 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
 
 object Console {
   def main(args: Array[String]) {
-    val run = new Console
+    val console = new Console
+
+    // Close the console properly (in particular, flush the history)
+    // even when the JVM is terminated.
+    Runtime.getRuntime.addShutdownHook(new Thread() {
+      override def run() {
+        console.close()
+      }
+    })
+
     try {
       try {
-        run.process(args)
+        console.process(args)
       } finally {
-        run.close
+        console.close()
       }
     } catch {
       case e => e.printStackTrace()
