@@ -7,6 +7,8 @@
 scalaVersion := "2.10.6"
 val scalaMajorVersion = "2.10"
 
+crossScalaVersions := Seq(scalaVersion.value, "2.11.8")
+
 version := "0.2-SNAPSHOT"
 
 libraryDependencies ++=
