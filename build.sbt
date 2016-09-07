@@ -4,12 +4,14 @@
 // provides a data context and dynamic class loader for code
 //
 
-scalaVersion := "2.10.6"
-val scalaMajorVersion = "2.10"
+scalaVersion := "2.11.6"
+val scalaMajorVersion = "2.11"
 
 version := "0.2-SNAPSHOT"
 
 libraryDependencies ++= Seq("jline" % "jline" % "2.14")
+
+crossScalaVersions := Seq("2.10.6")
 
 lazy val testsh =
   taskKey[Unit]("interactive shell for running tasks in a JVM instance, while code may be modified")
@@ -19,26 +21,32 @@ lazy val root = (project in file(".")).
     name := "dcontext",
     organization := "fi.veikkaus",
     testsh := {
-      val mainClass = "fi.veikkaus.dcontext.Console"
-      val keyPath =  f"target/scala-${scalaMajorVersion}/test-classes"
-      val selector = (path:File) => {
-        val p = path.getPath
-        p.contains(keyPath)
-      }
+      // Get the SBT test configuration class path
       val classpath =
         (fullClasspath in Test)
           .value
           .map(i=>i.data)
-      val staticCP = classpath.filter(!selector(_))
-      val dynamicCP = classpath.filter(selector)
 
-      val options =  (javaOptions in Test).value
-      val log = (streams in Test).value.log
+      // Separate SBT class path into A) static and B) dynamic parts
+      //  - Dynamic paths are paths, that contain following string
+      val dynamicPathFilter = (path:File) => {
+        val p = path.getPath
+        p.contains(f"target/scala-${scalaMajorVersion}/test-classes")
+      }
+      val staticCP = classpath.filter(!dynamicPathFilter(_))
+      val dynamicCP = classpath.filter(dynamicPathFilter)
+
+      // The console arguments contains
+      //   1) dynamic class path
+      //   2) mounted run context (containing tasks or unit tests)
+      //   3) command for starting the console in interactive mode
       val args = Seq(
         f"-p ${dynamicCP.mkString(":")}",
         "-m fi.veikkaus.dcontext.TestContext",
         "-i")
 
+      // Start the DContext console. Give static class paths as arguments for JVM
+      val mainClass = "fi.veikkaus.dcontext.Console"
       (runner in run).value.run(mainClass, staticCP, args, streams.value.log)
     }
   )

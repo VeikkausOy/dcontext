@@ -1,9 +1,5 @@
 package fi.veikkaus.dcontext
 
-
-/**
-  * Created by arau on 24.5.2016.
-  */
 class ScalaTestTask extends ContextTask {
   override def run(context: MutableDContext, args: Array[String]) = {
     var v = context.get[Int]("test.runNumber").getOrElse(0)

@@ -33,7 +33,7 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
     ("-l", dtask("lists context values", list)),
     ("-i", dtask("interactive console",  (c, args) => console)),
     ("-r", dtask("remove data (e.g. '-r fooX' or '-r .*')",          (c, args) => remove(args))),
-    ("-d", dtask("display class loader infor", (c, args) => classLoaderInfo))
+    ("-d", dtask("display class loader info", (c, args) => classLoaderInfo))
   )
 
   val systemLayer =

@@ -73,7 +73,7 @@ public class DynamicClassLoader extends ClassLoader {
                 loadClassesRecursively(f, pairName(pkg, f.getName()));
             }
             if (f.isFile() && f.getName().endsWith(".class")) {
-                System.out.println("loading " + f.getName());
+                info("loading " + f.getName());
                 loadClass(pairName(pkg, f.getName().substring(0, f.getName().length()-".class".length())));
             }
         }
@@ -409,7 +409,8 @@ public class DynamicClassLoader extends ClassLoader {
      * Log a message.
      */
     private static void info(String msg) {
-        System.out.println("[ContextServer] " + msg);
+        // FIXME
+        // System.out.println("[DynamicClassLoader] " + msg);
     }
 
 }
