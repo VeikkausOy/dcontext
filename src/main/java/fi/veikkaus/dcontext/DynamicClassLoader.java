@@ -1,5 +1,8 @@
 package fi.veikkaus.dcontext;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.*;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
@@ -14,6 +17,8 @@ import java.util.*;
  * Created by arau on 27.6.2016.
  */
 public class DynamicClassLoader extends ClassLoader {
+
+    private static Logger logger = LoggerFactory.getLogger(DynamicClassLoader.class);
 
     private ArrayList<ReloadableClassLoader> loaders = new ArrayList<>();
 
@@ -409,8 +414,7 @@ public class DynamicClassLoader extends ClassLoader {
      * Log a message.
      */
     private static void info(String msg) {
-        // FIXME
-        // System.out.println("[DynamicClassLoader] " + msg);
+        logger.info(msg);
     }
 
 }

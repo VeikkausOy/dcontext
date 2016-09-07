@@ -7,9 +7,13 @@
 scalaVersion := "2.11.6"
 val scalaMajorVersion = "2.11"
 
+crossScalaVersions := Seq(scalaVersion.value, "2.11.8")
+
 version := "0.2-SNAPSHOT"
 
-libraryDependencies ++= Seq("jline" % "jline" % "2.14")
+libraryDependencies ++=
+  Seq("jline" % "jline" % "2.14",
+      "org.slf4j" % "slf4j-api" % "1.7.21")
 
 crossScalaVersions := Seq("2.10.6")
 
