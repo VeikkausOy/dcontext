@@ -1,0 +1,4 @@
+the files are:
+  io/in/SPY.csv, exists:true
+  io/in/DJIA.csv, exists:true
+  io/in/SPX.csv, exists:true

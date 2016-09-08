@@ -1,0 +1,5 @@
+loggers: 
+  akka.remote.EndpointWriter FATAL
+  akka OFF
+  org.apache.spark.SparkContext WARN
+  org OFF

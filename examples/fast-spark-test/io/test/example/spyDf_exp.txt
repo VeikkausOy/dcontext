@@ -1,0 +1,11 @@
+columns:
+  symbol
+  date
+  time
+  open
+  high
+  low
+  close
+  volume
+
+rows: 1128951
