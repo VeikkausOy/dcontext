@@ -59,9 +59,6 @@ class ExampleTest extends TestSuite("example") {
     df.columns.foreach { c => t.tln("  " + c) }
     t.tln
     t.tln("rows: " + count)
-    t.tln // new
-    t.tln("the data frame:") // new
-    tDf(t, df) // prints the data frame
   })
 
 
