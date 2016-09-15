@@ -71,7 +71,7 @@ test("spyDf")((c, t) => {
 })
 ```
 
-Then let's wait for a second for the sbt compilation process to finish on the background. After complication is finished, we can relaunch the 'spyDf' test:
+Then let's wait for a second for the sbt compilation process to finish on the background. After compilation is finished, we can relaunch the 'spyDf' test:
 
 ```
 $ test spyDf
