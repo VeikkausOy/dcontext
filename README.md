@@ -13,7 +13,9 @@ You can run this project by publishing testtoys from GitHub locally. Then runnin
 
 ```
 $ test spyDf
-…lots of Spark log..
+
+  ...lots of Spark log..
+
   columns:
     symbol
     date
@@ -31,9 +33,12 @@ $ test spyDf
 
 Running the test case takes several seconds, because the task also sets up the SparkContext and loads and parses about 50MB of data.
 
-Now, let's starts 'sbt ~;package;test:package' on the background, and let's modify the fast-spark-test-sources.
 
-Fast spark-test is located in the ExampleTest.scala file and it looks like this:
+# Code modifications and the dynamic class loader
+
+Now, let's launch a new terminal, and run 'sbt ~;package;test:package' on it, in order to compile fast-spark-test sources on the background.
+
+Now, let's examine fast-spark-test sources codes. The 'spyDf' test is located in the ExampleTest.scala file and it looks like this:
 
 ```
 test("spyDf")((c, t) => {
@@ -46,7 +51,7 @@ test("spyDf")((c, t) => {
 })
 ```
 
-Let's add three new lines for printing some SPY dataframe contents:
+Let's test how dynamic class loading works, by adding three new lines for printing SPY dataframe contents:
 
 ```
 test("spyDf")((c, t) => {
@@ -62,11 +67,11 @@ test("spyDf")((c, t) => {
 })
 ```
 
-Then let's wait for second for the sbt compilation process to finish on the background, and then relaunch the test:
+Then let's wait for a second for the sbt compilation process to finish on the background. After complication is finished, we can relaunch the 'spyDf' test:
 
- ```
- $ example spyDf
-…lots of Spark log..
+```
+$ test spyDf
+  ...lots of Spark log..
   columns:
     symbol
     date
@@ -96,11 +101,11 @@ Then let's wait for second for the sbt compilation process to finish on the back
 ! ...
 
 187 ms. 15 errors! [d]iff, [c]ontinue or [f]reeze?
- ```
+```
 
-The testtoys behavioral test suite notices, that the test case results have changed, according to our modications. Even more, the test was faster to run, because while the code was modified and reloaded, the SparkContext and the SPY dataframe remained ready and loaded in the JVM's dcontext.
+The testtoys behavioral test suite notices, that the test case results have changed, according to our modications. Even more, the test was faster to run, because the SparkContext and the SPY dataframe remained loaded in the JVM's heap.
 
-The Spark infrastructure and the various data frames can be examined by running '-l' in the dcontext console:
+The Spark infrastructure and the various data frames can actually be seen by running '-l' in the dcontext console:
 
 ```
 $ -l
