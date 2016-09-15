@@ -5,9 +5,14 @@ dcontext is a tool that can offer rapid iteration cycle with huge amounts of dat
 
 # Example use:
 
+## Preparations
+
+
 The 'examples' folder contains a project named fast-spark-test, which uses dcontext and Spark for analyzing moderately sized stock market data sets.
 
 You can run this project by publishing testtoys from GitHub locally. Then running 'sbt publishLocal' local in both dcontext and ports/dtesttoys projects. Then you need to run ./get_data.sh and 'sbt testsh' in the fast-spark-test project folder.
+
+## Running dcontext console
 
 'sbt testsh' launches the dcontext console with the example test suite and an example test case called spyDf. Executing the spyDf produces following results
 
@@ -33,8 +38,7 @@ $ test spyDf
 
 Running the test case takes several seconds, because the task also sets up the SparkContext and loads and parses about 50MB of data.
 
-
-# Code modifications and the dynamic class loader
+# Modifying dynamically reloaded code
 
 Now, let's launch a new terminal, and run 'sbt ~;package;test:package' on it, in order to compile fast-spark-test sources on the background.
 
