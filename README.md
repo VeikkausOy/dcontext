@@ -38,7 +38,7 @@ $ test spyDf
 
 Running the test case takes several seconds, because the task also sets up the SparkContext and loads and parses about 50MB of data.
 
-# Modifying dynamically reloaded code
+## Modifying dynamically reloaded code
 
 Now, let's launch a new terminal, and run 'sbt ~;package;test:package' on it, in order to compile fast-spark-test sources on the background.
 
