@@ -1,4 +1,4 @@
-*Acknowledgements*
+# *Acknowledgements*
 
 *This tool was created by Veikkaus (https://veikkaus.fi) and Futurice (https://futurice.com), and contributed to the open source community by Veikkaus with BSD-3 license.*
 
