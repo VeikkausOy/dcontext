@@ -22,7 +22,7 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
   var contextCompleter: Option[Completer] = None
   val out = new PrintWriter(reader.getOutput)
 
-  val history = new FileHistory(new File(".dcontext_history"))
+  val history = new FileHistory(new File(".dcontext_history").getAbsoluteFile)
   reader.setHistory(history)
 
   val quit = new Object // unique key

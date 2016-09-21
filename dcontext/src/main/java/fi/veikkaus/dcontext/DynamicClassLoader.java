@@ -222,7 +222,7 @@ public class DynamicClassLoader extends ClassLoader {
         try {
             List<URL> rv = new ArrayList<>();
             Location l = locateResource(resource);
-            if (l != null) rv.add(l.PATH.toURL());
+            if (l != null) rv.add(new File(l.PATH, resource).toURL());
             Enumeration<URL> urls = getParent().getResources(resource);
             while (urls.hasMoreElements()) {
                 rv.add(urls.nextElement());
@@ -242,13 +242,11 @@ public class DynamicClassLoader extends ClassLoader {
      */
     public InputStream getResourceAsStream(String resource) {
         try {
-
             Location l = locateResource(resource);
             return l == null ?
                     getParent().getResourceAsStream(resource) :
                     new FileInputStream(new File(
                         l.PATH, resource));
-
         } catch (FileNotFoundException e) {
             // should not happen
             return null;
@@ -327,8 +325,8 @@ public class DynamicClassLoader extends ClassLoader {
 
                 info("took " + (System.currentTimeMillis()-before + " ms"));
             } catch (ClassNotFoundException e) {
-                throw new RuntimeException("Failed to load DynaCode class "
-                        + classFile.getAbsolutePath());
+                throw new RuntimeException("Failed to load class "
+                        + classFile.getAbsolutePath(), e);
             }
 
             info("Init " + clazz);
