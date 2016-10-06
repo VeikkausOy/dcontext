@@ -20,5 +20,34 @@ trait MutableDContext extends DContext {
 }
 
 object MutableDContext {
-  def apply = new HashMapDContext()
+  def apply() = new HashMapDContext()
+
+  // NOTE: that closing returned context closes only the top context
+  def mask(masked: DContext) = new MutableDContext {
+    val mask = new HashMapDContext
+    private def orElse[T](a: Option[T], b: => Option[T]) = {
+      a match {
+        case Some(v) => Some(v)
+        case None => b
+      }
+    }
+    override def getType(name: String) = {
+      orElse(mask.getType(name), masked.getType(name))
+    }
+    override def get[T](name: String) = {
+      orElse(mask.get(name), masked.get(name))
+    }
+    override def keySet: Set[String] = {
+      mask.keySet.toSet ++ masked.keySet
+    }
+    override def remove(key: String): Unit = {
+      mask.remove(key)
+    }
+    override def put(key: String, value: Any, closer: Option[Closeable]): Unit = {
+      mask.put(key, value, closer)
+    }
+    override def close() = {
+      mask.close()
+    }
+  }
 }

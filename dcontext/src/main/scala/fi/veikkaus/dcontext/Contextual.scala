@@ -7,9 +7,9 @@ import java.io.Closeable
   */
 class Contextual(val contextName:String) {
 
-  def cval[T <: Object](vname:String)(make : MutableDContext => T) =
+  def cval[T](vname:String)(make : MutableDContext => T) =
     new ContextVal(contextName+"."+vname, (c:MutableDContext) => (make(c), None))
-  def cvalc[T <: Object](vname:String)(make : MutableDContext => T)(closer : T => Unit) =
+  def cvalc[T](vname:String)(make : MutableDContext => T)(closer : T => Unit) =
     new ContextVal(contextName+"."+vname, (c:MutableDContext) => {
       val v = make(c)
       (v, Some(new Closeable() {

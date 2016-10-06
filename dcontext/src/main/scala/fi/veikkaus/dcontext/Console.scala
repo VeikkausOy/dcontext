@@ -36,7 +36,8 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
     ("-l", dtask("lists context values", list)),
     ("-i", dtask("interactive console",  (c, args) => console)),
     ("-r", dtask("remove data (e.g. '-r fooX' or '-r .*')",          (c, args) => remove(args))),
-    ("-d", dtask("display class loader info", (c, args) => classLoaderInfo))
+    ("-d", dtask("display class loader info", (c, args) => classLoaderInfo)),
+    ("--uris", dtask("display resource URIs", (c, args) => resourceURIs(args)))
   )
 
   val systemLayer =
@@ -105,6 +106,14 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
       dataLayer.remove(_)
     }
   }
+  def resourceURIs(args:Array[String]) = {
+    args.foreach { arg =>
+      out.append(arg + ":\n")
+      classLoader.getResources(arg).foreach { url =>
+        out.append("  " + url.toString + "\n")
+      }
+    }
+  }
 
   def dtask(h:String, task:(MutableDContext, Array[String])=>Any) =
     new HelpfulContextTask() {
@@ -125,6 +134,21 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
     reader.addCompleter(newCompleter)
   }
 
+  def exec(parts:Array[String]): Unit = {
+    if (parts.size > 0) {
+      val v = context.get[Any](parts.head)
+      //          out.println(v)
+      v match {
+        case Some(task: ContextTask) if task.isInstanceOf[ContextTask] =>
+          (task: ContextTask).run(context, parts.tail.toArray)
+        case Some(v) =>
+          out.println(v.toString)
+        case None =>
+          out.println("invalid argument: '" + parts.head + "'")
+      }
+    }
+  }
+
   @throws[Exception]
   def process(args: Array[String]) {
     val oldCl = Thread.currentThread().getContextClassLoader
@@ -134,19 +158,7 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
 
     try {
       args.foreach { arg =>
-        val parts = arg.trim().split(" ")
-        if (parts.size > 0) {
-          val v = context.get[Any](parts.head)
-//          out.println(v)
-          v match {
-            case Some(task : ContextTask) if task.isInstanceOf[ContextTask] =>
-              (task: ContextTask).run(context, parts.tail.toArray)
-            case Some(v) =>
-              out.println(v.toString)
-            case None =>
-              out.println("invalid argument: '" + parts.head + "'")
-          }
-        }
+        exec(arg.trim().split(" "))
       }
     } catch {
       case e => e.printStackTrace()
@@ -157,6 +169,15 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
 }
 
 object Console {
+  def exec(context:DContext, args:Array[String]): Unit = {
+    val console = new Console(context)
+    try {
+      console.exec(args)
+      console.out.flush
+    } finally {
+      console.close
+    }
+  }
   def main(args: Array[String]) {
     val console = new Console
 
