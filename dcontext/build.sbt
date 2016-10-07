@@ -18,7 +18,7 @@ libraryDependencies ++=
 lazy val testsh =
   taskKey[Unit]("interactive shell for running tasks in a JVM instance, while code may be modified")
 
-lazy val root = (project in file(".")).
+lazy val dcontext = (project in file(".")).
   settings(
     name := "dcontext",
     organization := "fi.veikkaus",

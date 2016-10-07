@@ -5,7 +5,7 @@ crossScalaVersions := Seq("2.10.6")
 connectInput      in Test := true
 parallelExecution in Test := false
 
-lazy val root = (project in file(".")).
+lazy val dtesttoys = (project in file(".")).
   settings(
     name := "dtesttoys",
     organization := "com.futurice",
