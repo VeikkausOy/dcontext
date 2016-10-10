@@ -1,6 +1,6 @@
 package com.futurice.dtesttoys
 
-import java.io.{BufferedReader, FileReader}
+import java.io.{BufferedReader, File, FileReader}
 
 import fi.veikkaus.dcontext._
 import com.futurice.testtoys._
@@ -12,6 +12,8 @@ abstract class TestSuite(val name:String) extends Contextual(name) with ContextT
   type TestMethod = (MutableDContext, TestTool)=>Unit
   type TestCase = (String, TestMethod)
 
+  def rootPath(c:MutableDContext) = c.get(TestSuite.testPathKey).getOrElse("./io/test")
+
   val tests = ArrayBuffer[TestCase]()
 
   def test(name:String)(t:TestMethod) = {
@@ -19,7 +21,7 @@ abstract class TestSuite(val name:String) extends Contextual(name) with ContextT
   }
 
   def runTest(c:MutableDContext, t:TestCase) = {
-    val tt = new TestTool("io/test/" + name + "/" + t._1)
+    val tt = new TestTool(new File(new File(rootPath(c), name), t._1).getPath)
 
     t._2(c, tt)
 
@@ -50,7 +52,13 @@ abstract class TestSuite(val name:String) extends Contextual(name) with ContextT
     selected.foreach(_._2(context))
   }
 
+}
 
+object TestSuite {
+  /**
+   * The root path, where the test files are located
+   */
+  def testPathKey = "dtesttoys.testpath"
 }
 
 
