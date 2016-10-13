@@ -35,9 +35,10 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
     ("-m", dtask("mounts context",       (c, args) => args.foreach(mount(_)))),
     ("-l", dtask("lists context values", list)),
     ("-i", dtask("interactive console",  (c, args) => console)),
-    ("-r", dtask("remove data (e.g. '-r fooX' or '-r .*')",          (c, args) => remove(args))),
-    ("-d", dtask("display class loader info", (c, args) => classLoaderInfo)),
-    ("--uris", dtask("display resource URIs", (c, args) => resourceURIs(args)))
+    ("-r", dtask("remove data (e.g. '-r fooX' or '-r .*')", (c, args) => remove(args))),
+    ("-x", dtask("execute tasks matching regex (e.g. '-x test.*'", (c, args) => execAll(args))),
+    ("-d", dtask("display class loader info",    (c, args) => classLoaderInfo)),
+    ("--uris", dtask("display resource URIs",    (c, args) => resourceURIs(args)))
   )
 
   val systemLayer =
@@ -146,6 +147,15 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
         case None =>
           out.println("invalid argument: '" + parts.head + "'")
       }
+    }
+  }
+
+  def execAll(args:Array[String]): Unit = {
+    args.flatMap { arg =>
+      val p = Pattern.compile(arg)
+      context.keySet.filter(p.matcher(_).matches)
+    }.map { task =>
+      exec(Array(task))
     }
   }
 
