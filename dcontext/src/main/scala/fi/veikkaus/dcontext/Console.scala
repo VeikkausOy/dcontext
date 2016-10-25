@@ -66,9 +66,10 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
 
     var line: String = null
     out.println("type -h for instructions:")
-    while ( { line = reader.readLine().trim; line != null && line != "-q"} ) {
-      if (line != "") {
-        process(Array(line))
+    while ( { line = reader.readLine(); line != null && line != "-q"} ) {
+      val l = line.trim()
+      if (l != "") {
+        process(Array(l))
       }
     }
   }
