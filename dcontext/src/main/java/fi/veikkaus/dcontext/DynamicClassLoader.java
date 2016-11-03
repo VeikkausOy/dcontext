@@ -268,10 +268,14 @@ public class DynamicClassLoader extends ClassLoader {
      *             if an instance cannot be created, because of class not found
      *             for example
      */
-    public <T> T newProxyInstance(Class<T> interfaceClass, String implClassName)
+    public <T> T newProxyInstance(Class<T> interfaceClass,
+                                  String implClassName,
+                                  Class[] constructorClasses,
+                                  Object[] constructorArgs)
             throws RuntimeException {
-        MyInvocationHandler handler = new MyInvocationHandler(
-                implClassName);
+        MyInvocationHandler handler =
+            new MyInvocationHandler(
+                implClassName, constructorClasses, constructorArgs);
         return (T) Proxy.newProxyInstance(this,
                 new Class[] { interfaceClass }, handler);
     }
@@ -339,12 +343,18 @@ public class DynamicClassLoader extends ClassLoader {
 
         Object backend;
 
-        MyInvocationHandler(String className) {
+        Class[] constructorClasses;
+
+        Object[] constructorArgs;
+
+        MyInvocationHandler(String className, Class[] constructorClasses, Object[] constructorArgs) {
             backendClassName = className;
+            this.constructorClasses = constructorClasses;
+            this.constructorArgs = constructorArgs;
 
             try {
                 Class clz = loadClass(backendClassName);
-                backend = newDynaCodeInstance(clz);
+                backend = newDynaCodeInstance(clz, constructorClasses, constructorArgs);
 
             } catch (ClassNotFoundException e) {
                 throw new RuntimeException(e);
@@ -361,7 +371,7 @@ public class DynamicClassLoader extends ClassLoader {
                 if (backend instanceof Closeable) {
                     ((Closeable)backend).close();
                 }
-                backend = newDynaCodeInstance(clz);
+                backend = newDynaCodeInstance(clz, constructorClasses, constructorArgs);
             }
 
             try {
@@ -373,9 +383,9 @@ public class DynamicClassLoader extends ClassLoader {
             }
         }
 
-        private Object newDynaCodeInstance(Class clz) {
+        private Object newDynaCodeInstance(Class clz, Class[] constructorClasses, Object[] constructorArgs) {
             try {
-                return clz.newInstance();
+                return clz.getConstructor(constructorClasses).newInstance(constructorArgs);
             } catch (Exception e) {
                 throw new RuntimeException(
                         "Failed to new instance of DynaCode class "

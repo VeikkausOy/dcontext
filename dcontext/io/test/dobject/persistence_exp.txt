@@ -1,0 +1,143 @@
+context: 
+created test object
+
+object is {a:4, b:2, x:3, sum:2, dec:-1, double:-2}
+
+context: 
+  persistent.a         4
+  persistent.a.version 0
+  persistent.b         2
+  persistent.b.version 0
+  persistent.dec       Success(-1)
+  persistent.dec.version ((0,0),0)
+  persistent.div       Success(2)
+  persistent.div.version (0,0)
+  persistent.file.bin.version ((0,0),0)
+  persistent.x         3
+  persistent.x.version 0
+
+changed a to 4
+
+object is {a:4, b:2, x:3, sum:2, dec:-1, double:-2}
+
+context: 
+  persistent.a         4
+  persistent.a.version 1
+  persistent.b         2
+  persistent.b.version 0
+  persistent.dec       Success(-1)
+  persistent.dec.version ((1,0),0)
+  persistent.div       Success(2)
+  persistent.div.version (1,0)
+  persistent.file.bin.version ((1,0),0)
+  persistent.x         3
+  persistent.x.version 0
+
+
+restored test object from context
+
+object is {a:4, b:2, x:3, sum:2, dec:-1, double:-2}
+
+context: 
+  persistent.a         4
+  persistent.a.version 1
+  persistent.b         2
+  persistent.b.version 0
+  persistent.dec       Success(-1)
+  persistent.dec.version ((1,0),0)
+  persistent.div       Success(2)
+  persistent.div.version (1,0)
+  persistent.file.bin.version ((1,0),0)
+  persistent.x         3
+  persistent.x.version 0
+
+closed the context and created new one
+
+dir: 
+  a                    4
+  a.version            1
+  b                    2
+  b.version            0
+  dec                  -1
+  dec.version          ((1,0),0)
+  div                  2
+  div.version          (1,0)
+  file.bin             -2
+  file.bin.version     ((1,0),0)
+  x                    3
+  x.version            0
+
+context: 
+
+restored test object from fs
+
+object is {a:4, b:2, x:3, sum:2, dec:-1, double:-2}
+
+context: 
+  persistent.a         4
+  persistent.a.version 1
+  persistent.b         2
+  persistent.b.version 0
+  persistent.dec       Success(-1)
+  persistent.dec.version ((1,0),0)
+  persistent.div       Success(2)
+  persistent.div.version (1,0)
+  persistent.file.bin.version ((1,0),0)
+  persistent.x         3
+  persistent.x.version 0
+
+let's corrupt things, by setting b=0
+
+div try is Failure(java.lang.ArithmeticException: / by zero)
+dec try is Failure(java.lang.ArithmeticException: / by zero)
+double try is Failure(java.lang.ArithmeticException: / by zero)
+
+context: 
+  persistent.a         4
+  persistent.a.version 1
+  persistent.b         0
+  persistent.b.version 1
+  persistent.dec       Failure(java.lang.Arithm...
+  persistent.dec.version ((1,1),0)
+  persistent.div       Failure(java.lang.Arithm...
+  persistent.div.version (1,1)
+  persistent.file.bin.version ((1,1),0)
+  persistent.x         3
+  persistent.x.version 0
+
+closed the context and created new one
+
+dir: 
+  a                    4
+  a.version            1
+  b                    0
+  b.version            1
+  dec.error            java.lang.ArithmeticExce...
+  dec.version          ((1,1),0)
+  div.error            java.lang.ArithmeticExce...
+  div.version          (1,1)
+  file.bin.error       java.lang.ArithmeticExce...
+  file.bin.version     ((1,1),0)
+  x                    3
+  x.version            0
+
+context: 
+
+restored test object from fs
+
+div try is Failure(java.lang.ArithmeticException: / by zero)
+dec try is Failure(java.lang.ArithmeticException: / by zero)
+double try is Failure(java.lang.ArithmeticException: / by zero)
+
+context: 
+  persistent.a         4
+  persistent.a.version 1
+  persistent.b         0
+  persistent.b.version 1
+  persistent.dec       Failure(java.lang.Arithm...
+  persistent.dec.version ((1,1),0)
+  persistent.div       Failure(java.lang.Arithm...
+  persistent.div.version (1,1)
+  persistent.file.bin.version ((1,1),0)
+  persistent.x         3
+  persistent.x.version 0

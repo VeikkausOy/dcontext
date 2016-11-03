@@ -58,7 +58,7 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
   }
 
   def mount(str:String): Unit = {
-    val c = classLoader.newProxyInstance[DContext](classOf[DContext], str)
+    val c = classLoader.newProxyInstance[DContext](classOf[DContext], str, Array(), Array())
     staticLayer ++= c
   }
   def console = {
