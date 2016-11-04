@@ -13,9 +13,6 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
 
-/**
- * Created by arau on 27.6.2016.
- */
 public class DynamicClassLoader extends ClassLoader {
 
     private static Logger logger = LoggerFactory.getLogger(DynamicClassLoader.class);
