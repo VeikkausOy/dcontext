@@ -42,6 +42,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   //      if it is not, we need to do another request with the older version number
   //
   override def updated(version: Option[Version]): Future[Option[(Try[Value], Version)]] = synchronized {
+    logger.info("updated called for " + Make.this.hashCode())
     val doUpdate = () => {
       val rv =
         source.updated(version).map {
@@ -49,13 +50,15 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
             Make.this.synchronized {
               val value = versionStore.get match {
                 case Some(storedVersion) if storedVersion == newestVersion =>
-                  logger.info("new version already fetched")
+                  logger.info("new version already fetched for " + Make.this.hashCode())
                   val rv = valueStore.get.get
                   rv
                 case _ =>
+                  logger.info("creating new version for " + Make.this.hashCode())
                   val v = source.map(f(_))
                   valueStore.update(Some(v))
                   versionStore.update(Some(newestVersion))
+                  logger.info("created new version for " + Make.this.hashCode())
                   v
               }
               (value, newestVersion): (Try[Value], Version)
@@ -71,6 +74,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
     }
     request match {
       case None =>
+        logger.info("new request for " + version)
         val f = doUpdate()
         request = Some((version, f))
         f
