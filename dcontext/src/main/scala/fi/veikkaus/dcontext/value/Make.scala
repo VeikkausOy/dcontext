@@ -2,7 +2,9 @@ package fi.veikkaus.dcontext.value
 
 import java.io.File
 
+import fi.veikkaus.dcontext.DynamicClassLoader
 import fi.veikkaus.dcontext.store.Store
+import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
@@ -18,7 +20,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
                                   valueStore:Store[Try[Value]],
                                   versionStore:Store[Version])
   extends VersionedVal[Value, Version] {
-
+  private val logger = LoggerFactory.getLogger(classOf[Make[Value, Source, Version]])
   private var request : Option[(Option[Version], Future[Option[(Try[Value], Version)]])] = None
 
   //
@@ -47,7 +49,9 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
             Make.this.synchronized {
               val value = versionStore.get match {
                 case Some(storedVersion) if storedVersion == newestVersion =>
-                  valueStore.get.get
+                  logger.info("new version already fetched")
+                  val rv = valueStore.get.get
+                  rv
                 case _ =>
                   val v = source.map(f(_))
                   valueStore.update(Some(v))
@@ -71,6 +75,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
         request = Some((version, f))
         f
       case Some((v, f)) =>
+        logger.info("request for " + v + " already pending")
         f.flatMap { _ match {
           case Some((value, newestV)) =>
             Future {
@@ -84,6 +89,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
             if (version == v) { // v is the newest version, and this request has it, good
               Future { None }
             } else { // oh no, v is the newest version, but this request doesn't have it -> rerequest
+              logger.info("redo request")
               updated(version) // redo the request
             }
           }
@@ -92,8 +98,13 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   }
   def valueAndVersion : Future[(Try[Value], Version)] = {
     updated(versionStore.get).map(
-      _.getOrElse(
-        Make.this.synchronized (valueStore.get.get, versionStore.get.get)))
+      _.getOrElse {
+        logger.info("getting recent version from store")
+        val before = System.currentTimeMillis()
+        val rv = Make.this.synchronized (valueStore.get.get, versionStore.get.get)
+        logger.info("loading took " + (System.currentTimeMillis() - before) + "ms")
+        rv
+      })
   }
   def storedVersion = versionStore.get
   def get = valueAndVersion.map(_._1.get)
