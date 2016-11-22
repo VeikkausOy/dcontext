@@ -1,6 +1,6 @@
 package fi.veikkaus.dcontext.value
 
-import java.io.File
+import java.io.{Closeable, File}
 
 import fi.veikkaus.dcontext.DynamicClassLoader
 import fi.veikkaus.dcontext.store.Store
@@ -8,7 +8,7 @@ import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 import scala.concurrent.ExecutionContext.Implicits.global
 
 /**
@@ -16,7 +16,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
   * values, that are factoring from mutating sources.
   */
 class Make[Value, Source, Version](source : Versioned[Source, Version],
-                                  f : Source=>Value,
+                                  f : Source=>Future[Value],
                                   valueStore:Store[Try[Value]],
                                   versionStore:Store[Version])
   extends VersionedVal[Value, Version] {
@@ -45,24 +45,33 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
     logger.info("updated called for " + Make.this.hashCode())
     val doUpdate = () => {
       val rv =
-        source.updated(version).map {
-          _.map { case (source, newestVersion) =>
-            Make.this.synchronized {
-              val value = versionStore.get match {
-                case Some(storedVersion) if storedVersion == newestVersion =>
-                  logger.info("new version already fetched for " + Make.this.hashCode())
-                  val rv = valueStore.get.get
-                  rv
-                case _ =>
-                  logger.info("creating new version for " + Make.this.hashCode())
-                  val v = source.map(f(_))
-                  valueStore.update(Some(v))
-                  versionStore.update(Some(newestVersion))
-                  logger.info("created new version for " + Make.this.hashCode())
-                  v
+        source.updated(version).flatMap { e =>
+          e match {
+            case Some((source, newestVersion)) =>
+              Make.this.synchronized {
+                versionStore.get match {
+                  case Some(storedVersion) if storedVersion == newestVersion =>
+                    logger.info("new version already fetched for " + Make.this.hashCode())
+                    val rv = valueStore.get.get
+                    Future { Some((rv, newestVersion)) } : Future[Option[(Try[Value], Version)]]
+                  case _ =>
+                    logger.info("creating new version for " + Make.this.hashCode())
+                    source.map(f(_)) match {
+                      case Success(v) =>
+                        v.map { value =>
+                          Make.this.synchronized {
+                            valueStore.update(Some(Try(value)))
+                            versionStore.update(Some(newestVersion))
+                            logger.info("created new version for " + Make.this.hashCode())
+                            Some((Success(value), newestVersion)) : Option[(Try[Value], Version)]
+                          }
+                        } : Future[Option[(Try[Value], Version)]]
+                      case Failure(err) =>
+                        Future { Some((Failure(err), newestVersion)) } : Future[Option[(Try[Value], Version)]]
+                    }
+                }
               }
-              (value, newestVersion): (Try[Value], Version)
-            }
+            case None => Future {None}
           }
         }
       rv.onComplete { res =>
@@ -143,13 +152,13 @@ object Make {
 
   def apply[Type, Source, Version](
       valueStore:Store[Try[Type]], versionStore:Store[Version])(
-      s1:Versioned[Source, Version])(f : Source => Type) = {
+      s1:Versioned[Source, Version])(f : Source => Future[Type]) = {
     new Make[Type, Source, Version](s1, f, valueStore, versionStore)
   }
 
   def apply[Type, Source1, Version1, Source2, Version2](
      valueStore:Store[Try[Type]], versionStore:Store[(Version1, Version2)])(
-     s1:Versioned[Source1, Version1], s2:Versioned[Source2, Version2])(f : ((Source1, Source2)) => Type) = {
+     s1:Versioned[Source1, Version1], s2:Versioned[Source2, Version2])(f : ((Source1, Source2)) => Future[Type]) = {
     new Make[Type, (Source1, Source2), (Version1, Version2)](
       new VersionedPair[Source1, Version1, Source2, Version2](s1, s2),
       f,

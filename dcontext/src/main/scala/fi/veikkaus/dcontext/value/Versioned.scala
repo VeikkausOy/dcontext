@@ -90,6 +90,7 @@ class VersionedVar[T](v:Var[T], versionVar:Var[Long] = new HeapVar[Long](0)) ext
     v.update(value)
   }
   override def get = Future { v.get }
+  def apply() = v.get
 }
 
 class VersionedValImpl[T, V](v:Val[T], versionVal:Val[V]) extends VersionedVal[T, V] {

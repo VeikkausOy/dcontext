@@ -49,9 +49,9 @@ class DObjectTest extends TestSuite("dobject") {
   }
 
   class FsTestObject(c: MutableDContext, dir: File) extends FsDObject(c, "persistent", dir) {
-    val a = fileVar("a", 4)
-    val b = fileVar("b", 2)
-    val x = fileVar("x", 3)
+    val a = persistentVar("a", 4)
+    val b = persistentVar("b", 2)
+    val x = persistentVar("x", 3)
 
     val div = makePersistent("div", (a, b)) { case (a, b) => a / b }
     val dec = makePersistent("dec", (div, x)) { case (div, x) => div - x }

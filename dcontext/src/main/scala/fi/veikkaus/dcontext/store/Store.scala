@@ -164,11 +164,40 @@ case class CachedStore[T](cache:Store[T], box:Store[T]) extends Store[T] {
   }
 }
 
-case class ContextStore[T](c:MutableDContext, name:String) extends Store[T] {
+case class AutoClosedTryStore[T](store:Store[Try[T]], closer:T=>Unit) extends Store[Try[T]] {
+  def close = get.map { _.map { closer } }
+  def get = store.get
+  def update(t:Option[Try[T]]) = {
+    if (t != get) close
+    store.update(t)
+  }
+  override def delete = {
+    close
+    store.delete
+  }
+}
+
+case class ContextStore[T](c:MutableDContext, name:String, closer:Option[T => Unit] = None) extends Store[T] {
   def get = c.get[T](name)
   def update(t:Option[T]): Unit = {
     t match {
-      case Some(v) => c.put(name, v)
+      case Some(v) =>
+        c.put(name, v, closer.map(cl => new Closeable {
+          override def close(): Unit = cl(v)
+        }))
+      case None => c.remove(name)
+    }
+  }
+}
+
+case class ContextTryStore[T](c:MutableDContext, name:String, closer:Option[T => Unit] = None) extends Store[Try[T]] {
+  def get = c.get[Try[T]](name)
+  def update(t:Option[Try[T]]): Unit = {
+    t match {
+      case Some(v) =>
+        c.put(name, v, closer.map(cl => new Closeable {
+          override def close(): Unit = v.foreach(cl(_))
+        }))
       case None => c.remove(name)
     }
   }

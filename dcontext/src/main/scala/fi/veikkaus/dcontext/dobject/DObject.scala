@@ -32,6 +32,9 @@ class DObject(val c:MutableDContext, val dname:String) {
 
 //  lazy val lock = contextVar(allocName(".lock"), new Object)
 
+  def contextTryStore[T](n:String, closer:Option[T => Unit] = None) = {
+    new ContextTryStore[T](c, allocName(n), closer)
+  }
   def contextStore[T](n:String) = {
     new ContextStore[T](c, allocName(n))
   }
@@ -43,14 +46,26 @@ class DObject(val c:MutableDContext, val dname:String) {
   def lazyContextVal[T](n:String, init : => Future[T]) = {
     new AsyncLazyVal[T](new ContextStore[T](c, dname + "." + n), init)
   }
-  def make[Type, Source, Version](n:String, source:Versioned[Source, Version])(f:Source=>Type) = {
+  def make[Type, Source, Version](n:String, source:Versioned[Source, Version])(f:Source=>Future[Type]) = {
     Make(contextStore[Try[Type]](n), contextStore[Version](f"$n.version"))(source)(f)
   }
   def make[Type, Source1, Version1, Source2, Version2]
     (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-    (f:((Source1, Source2))=>Type) = {
+    (f:((Source1, Source2))=>Future[Type]) = {
     Make(contextStore[Try[Type]](n), contextStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
   }
+  def makeAutoClosed[Type, Source, Version](n:String, source:Versioned[Source, Version])(f:Source=>Future[Type])(closer:Type => Unit) = {
+    Make(contextTryStore[Type](n, Some(closer)),
+         contextStore[Version](f"$n.version"))(source)(f)
+  }
+  def makeAutoClosed[Type, Source1, Version1, Source2, Version2]
+        (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
+        (f:((Source1, Source2))=>Future[Type])
+        (closer:Type => Unit) = {
+    Make(contextTryStore[Type](n, Some(closer)),
+         contextStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
+  }
+
 }
 
 class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c, name) {
@@ -91,47 +106,47 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
                    FileStore(file))
   }
 
-  def fileVar[T](n:String, init : => T) = {
+  def persistentVar[T](n:String, init : => T) = {
     new VersionedVar[T](new StoreVar[T](contextAndFileStore[T](n), init),
                         new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
   }
 
+  /* stored mainly in filesystem, lifted to memory only as needed*/
   def makeFile[Type <: AnyRef, Source, Version]
   (n:String, source:Versioned[Source, Version])
-  (f:Source=>Type) = {
+  (f:Source=>Future[Type]) = {
     Make(fileTryStore[Type](n),
       contextAndFileStore[Version](f"$n.version"))(source)(f)
   }
 
   def makeFile[Type <: AnyRef, Source1, Version1, Source2, Version2]
     (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-    (f:((Source1, Source2))=>Type) = {
+    (f:((Source1, Source2))=>Future[Type]) = {
     Make(fileTryStore[Type](n),
          contextAndFileStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
   }
 
   def makeWrittenFile[Type <: AnyRef, Source, Version]
   (n:String, source:Versioned[Source, Version])
-  (f:(Source, File)=>Unit) = {
+  (f:(Source, File)=>Future[Unit]) = {
     val file = allocFile(n)
     Make(new FileNameTryStore(file),
          contextAndFileStore[Version](f"$n.version"))(source) { s =>
-      f(s, file)
-      file
+      f(s, file).map { v => file }
     }
   }
 
 
   def makePersistent[Type, Source, Version]
     (n:String, source:Versioned[Source, Version])
-    (f:Source=>Type) = {
+    (f:Source=>Future[Type]) = {
     Make(contextAndFileTryStore[Type](n),
          contextAndFileStore[Version](f"$n.version"))(source)(f)
   }
 
   def makePersistent[Type, Source1, Version1, Source2, Version2]
   (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-  (f:((Source1, Source2))=>Type) = {
+  (f:((Source1, Source2))=>Future[Type]) = {
     Make(contextAndFileTryStore[Type](n),
          contextAndFileStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
   }
