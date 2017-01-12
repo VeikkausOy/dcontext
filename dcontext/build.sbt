@@ -14,6 +14,7 @@ version := "0.2-SNAPSHOT"
 libraryDependencies ++=
   Seq("jline" % "jline" % "2.14",
       "org.slf4j" % "slf4j-api" % "1.7.21",
+      "org.slf4j" % "slf4j-simple" % "1.7.21" % "test",
       "com.futurice" %% "testtoys" % "0.2" % "test")
 
 lazy val testsh =

@@ -56,8 +56,22 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
                     Future { Some((rv, newestVersion)) } : Future[Option[(Try[Value], Version)]]
                   case _ =>
                     logger.info("creating new version for " + Make.this.hashCode())
-                    source.map(f(_)) match {
-                      case Success(v) =>
+                    (source.map(f(_).map { value =>
+                           Success(value)
+                         }.recover { case err =>
+                           Failure(err)
+                         }).recover { case err =>
+                           Future { Failure(err) }
+                    }).get.map { case t =>
+                      logger.info("storing new " + t +" of version " + newestVersion + " for " + Make.this.hashCode())
+                      Make.this.synchronized {
+                        valueStore.update(Some(t))
+                        versionStore.update(Some(newestVersion))
+                        logger.info("done")
+                        Some((t, newestVersion)): Option[(Try[Value], Version)]
+                      }
+                    } : Future[Option[(Try[Value], Version)]]
+/*                      case Success(v) =>
                         v.map { value =>
                           Make.this.synchronized {
                             valueStore.update(Some(Try(value)))
@@ -68,7 +82,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
                         } : Future[Option[(Try[Value], Version)]]
                       case Failure(err) =>
                         Future { Some((Failure(err), newestVersion)) } : Future[Option[(Try[Value], Version)]]
-                    }
+                    }*/
                 }
               }
             case None => Future {None}

@@ -53,7 +53,8 @@ class DObjectTest extends TestSuite("dobject") {
     val b = persistentVar("b", 2)
     val x = persistentVar("x", 3)
 
-    val div = makePersistent("div", (a, b)) { case (a, b) => Future { a / b } }
+    val div = makePersistent("div", (a, b)) { case (a, b) =>
+      Future { a / b } }
     val dec = makePersistent("dec", (div, x)) { case (div, x) => Future { div - x } }
 
     val double = makeWrittenFile("file.bin", dec) { case (dec, f) =>
