@@ -71,18 +71,6 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
                         Some((t, newestVersion)): Option[(Try[Value], Version)]
                       }
                     } : Future[Option[(Try[Value], Version)]]
-/*                      case Success(v) =>
-                        v.map { value =>
-                          Make.this.synchronized {
-                            valueStore.update(Some(Try(value)))
-                            versionStore.update(Some(newestVersion))
-                            logger.info("created new version for " + Make.this.hashCode())
-                            Some((Success(value), newestVersion)) : Option[(Try[Value], Version)]
-                          }
-                        } : Future[Option[(Try[Value], Version)]]
-                      case Failure(err) =>
-                        Future { Some((Failure(err), newestVersion)) } : Future[Option[(Try[Value], Version)]]
-                    }*/
                 }
               }
             case None => Future {None}

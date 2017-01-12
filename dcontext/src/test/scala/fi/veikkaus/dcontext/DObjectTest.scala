@@ -72,7 +72,6 @@ class DObjectTest extends TestSuite("dobject") {
         f"sum:${Await.result(div.get, 5 seconds)}, " +
         f"dec:${Await.result(dec.get, 5 seconds)}, " +
         f"double:${Await.result(doubleContent, 5 seconds)}}"
-
     }
   }
 
