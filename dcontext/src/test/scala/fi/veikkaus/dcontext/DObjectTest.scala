@@ -5,9 +5,9 @@ import java.io.File
 import com.futurice.testtoys.{TestSuite, TestTool}
 import fi.veikkaus.dcontext.dobject.{DObject, FsDObject}
 import fi.veikkaus.dcontext.store.IoUtil
-import scala.concurrent.ExecutionContext.Implicits.global
 
-import scala.concurrent.Await
+import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration._
 
 /**
@@ -36,8 +36,8 @@ class DObjectTest extends TestSuite("dobject") {
     val b = cvar("b", 2)
     val x = cvar("x", 3)
 
-    val sum = make("sum", (a, b)) { case (a, b) => a + b }
-    val dec = make("dec", (sum, x)) { case (sum, x) => sum - x }
+    val sum = make("sum", (a, b)) { case (a, b) => Future { a + b } }
+    val dec = make("dec", (sum, x)) { case (sum, x) => Future { sum - x } }
 
     override def toString = {
       f"{a:${Await.result(a.get, 5 seconds)}, " +
@@ -53,11 +53,11 @@ class DObjectTest extends TestSuite("dobject") {
     val b = persistentVar("b", 2)
     val x = persistentVar("x", 3)
 
-    val div = makePersistent("div", (a, b)) { case (a, b) => a / b }
-    val dec = makePersistent("dec", (div, x)) { case (div, x) => div - x }
+    val div = makePersistent("div", (a, b)) { case (a, b) => Future { a / b } }
+    val dec = makePersistent("dec", (div, x)) { case (div, x) => Future { div - x } }
 
     val double = makeWrittenFile("file.bin", dec) { case (dec, f) =>
-      IoUtil.atomicWrite(f, 2 * dec)
+      Future { IoUtil.atomicWrite(f, 2 * dec) }
     }
 
     def doubleContent = double.get.map { f =>
@@ -188,20 +188,20 @@ class DObjectTest extends TestSuite("dobject") {
     val a = cvar("a", 4)
     val b = cvar("b", 2)
 
-    val slowA = make("slowA", a) { case a =>
+    val slowA = make("slowA", a) { case a => Future {
       t("doing A...")
       Thread.sleep(100) // sleep 100 ms
       t("A done. ")
       a
-    }
-    val slowB = make("slowB", b) { case b =>
+    }}
+    val slowB = make("slowB", b) { case b => Future {
       t("doing B...")
       Thread.sleep(100) // sleep 100 ms
       t("B done. ")
       b
-    }
+    }}
 
-    val div = make("div", (slowA, slowB)) { case (a, b) => a / b }
+    val div = make("div", (slowA, slowB)) { case (a, b) => Future { a / b } }
 
     override def toString = {
       f"{a:${Await.result(a.get, 5 seconds)}, " +
