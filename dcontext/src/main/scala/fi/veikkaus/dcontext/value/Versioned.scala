@@ -35,7 +35,22 @@ trait Versioned[Value, Version] {
   def updated(version:Option[Version]) : Future[Option[(Try[Value], Version)]]
 }
 
-class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, VersionA],
+object Versioned {
+  def apply[T, V](t: => T, v: => V) : Versioned[T, V] = new Versioned[T, V] {
+    // returns an updated version, if one exists
+    override def updated(version: Option[V]): Future[Option[(Try[T], V)]] = {
+      Future {
+        version match {
+          case vs if vs == v => None
+          case vs =>            Some(Success(t) -> v)
+        }}
+    }
+  }
+  def apply[T](t: => T) : Versioned[T, Nil.type] = apply(t, Nil)
+  def apply() : Versioned[Nil.type, Nil.type] = apply(Nil, Nil)
+}
+
+case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, VersionA],
                                                       b:Versioned[TypeB, VersionB])
   extends Versioned[(TypeA, TypeB), (VersionA, VersionB)] {
 
@@ -64,6 +79,37 @@ class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, Version
           a.updated(None).map { case Some(ar) =>
             Some(zipTry(ar._1, br._1), (ar._2, br._2))
           }
+      }
+    }
+  }
+}
+
+case class VersionedSeq[T, V](vs:Seq[Versioned[T, V]])
+  extends Versioned[Seq[T], Seq[V]] {
+  // returns an updated version, if one exists
+  override def updated(version: Option[Seq[V]]): Future[Option[(Try[Seq[T]], Seq[V])]] = {
+    Future.sequence(
+      vs.zipWithIndex.map(e => (e._1, version.map(_(e._2)))).map { case (t, v) =>
+        t.updated(v)
+      }).flatMap { v =>
+      if (v.exists(_.isDefined)) { // if any of the entries has changed, recreate all
+        Future.sequence(
+          v.zipWithIndex.map { case (e, i) => e match {
+            case Some((t, v)) => Future{ (t, v) }
+            case None => vs(i).updated(None).map(_.get) // force retrieval of value
+          }
+        }).map { _ match {
+          // fail, if there was any failure
+          case vs if vs.exists(_._1.isFailure) =>
+            val f = vs.find(_._1.isFailure).map(_._1.asInstanceOf[Failure[T]]).get
+            Some(Failure(f.exception) -> vs.map(_._2))
+              : Option[(Try[Seq[T]], Seq[V])]
+          // success
+          case vs =>
+            Some((Success(vs.map(_._1.get))) -> vs.map(_._2)) : Option[(Try[Seq[T]], Seq[V])]
+        }}
+      } else {
+        Future { None : Option[(Try[Seq[T]], Seq[V])] }
       }
     }
   }

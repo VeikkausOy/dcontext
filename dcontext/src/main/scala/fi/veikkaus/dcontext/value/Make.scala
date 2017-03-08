@@ -42,7 +42,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   //      if it is not, we need to do another request with the older version number
   //
   override def updated(version: Option[Version]): Future[Option[(Try[Value], Version)]] = synchronized {
-    logger.info("updated called for " + Make.this.hashCode())
+    logger.debug("updated called for " + Make.this.hashCode())
     val doUpdate = () => {
       val rv =
         source.updated(version).flatMap { e =>
@@ -51,11 +51,21 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
               Make.this.synchronized {
                 versionStore.get match {
                   case Some(storedVersion) if storedVersion == newestVersion =>
-                    logger.info("new version already fetched for " + Make.this.hashCode())
-                    val rv = valueStore.get.get
-                    Future { Some((rv, newestVersion)) } : Future[Option[(Try[Value], Version)]]
+                    logger.debug("new version already fetched for " + Make.this.hashCode())
+                    try {
+                      val rv = valueStore.get.get
+                      Future {
+                        Some((rv, newestVersion))
+                      }: Future[Option[(Try[Value], Version)]]
+                    } catch {
+                      case e : ClassCastException =>
+                        logger.debug("recovering old value failed, recreating " + Make.this.hashCode())
+                        valueStore.update(None)
+                        versionStore.update(None)
+                        updated(version)
+                    }
                   case _ =>
-                    logger.info("creating new version for " + Make.this.hashCode())
+                    logger.debug("creating new version for " + Make.this.hashCode())
                     (source.map(f(_).map { value =>
                            Success(value)
                          }.recover { case err =>
@@ -63,11 +73,11 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
                          }).recover { case err =>
                            Future { Failure(err) }
                     }).get.map { case t =>
-                      logger.info("storing new " + t +" of version " + newestVersion + " for " + Make.this.hashCode())
+                      logger.debug("storing new " + t.hashCode() +" of version " + newestVersion + " for " + Make.this.hashCode())
                       Make.this.synchronized {
                         valueStore.update(Some(t))
                         versionStore.update(Some(newestVersion))
-                        logger.info("done")
+                        logger.debug("done")
                         Some((t, newestVersion)): Option[(Try[Value], Version)]
                       }
                     } : Future[Option[(Try[Value], Version)]]
@@ -85,12 +95,12 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
     }
     request match {
       case None =>
-        logger.info("new request for " + version)
+        logger.debug("new request for " + version)
         val f = doUpdate()
         request = Some((version, f))
         f
       case Some((v, f)) =>
-        logger.info("request for " + v + " already pending")
+        logger.debug("request for " + v + " already pending")
         f.flatMap { _ match {
           case Some((value, newestV)) =>
             Future {
@@ -104,7 +114,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
             if (version == v) { // v is the newest version, and this request has it, good
               Future { None }
             } else { // oh no, v is the newest version, but this request doesn't have it -> rerequest
-              logger.info("redo request")
+              logger.debug("redo request")
               updated(version) // redo the request
             }
           }
@@ -114,10 +124,10 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   def valueAndVersion : Future[(Try[Value], Version)] = {
     updated(versionStore.get).map(
       _.getOrElse {
-        logger.info("getting recent version from store")
+        logger.debug("getting recent version from store")
         val before = System.currentTimeMillis()
         val rv = Make.this.synchronized (valueStore.get.get, versionStore.get.get)
-        logger.info("loading took " + (System.currentTimeMillis() - before) + "ms")
+        logger.debug("loading took " + (System.currentTimeMillis() - before) + "ms")
         rv
       })
   }

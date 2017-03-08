@@ -164,8 +164,8 @@ case class CachedStore[T](cache:Store[T], box:Store[T]) extends Store[T] {
   }
 }
 
-case class AutoClosedTryStore[T](store:Store[Try[T]], closer:T=>Unit) extends Store[Try[T]] {
-  def close = get.map { _.map { closer } }
+case class AutoClosedTryStore[T](store:Store[Try[T]], closer:T=>Unit) extends Store[Try[T]] with Closeable {
+  override def close = get.map { _.map { closer } }
   def get = store.get
   def update(t:Option[Try[T]]) = {
     if (t != get) close

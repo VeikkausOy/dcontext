@@ -56,7 +56,7 @@ public class DynamicClassLoader extends ClassLoader {
         synchronized (loaders) {
             src = new ReloadableClassLoader(paths, DynamicClassLoader.this);
             loaders.add(src);
-//            info("add class paths " + paths);
+//            debug("add class paths " + paths);
 
 //            loadClassesRecursively(loader);
         }
@@ -75,7 +75,7 @@ public class DynamicClassLoader extends ClassLoader {
                 loadClassesRecursively(f, pairName(pkg, f.getName()));
             }
             if (f.isFile() && f.getName().endsWith(".class")) {
-                info("loading " + f.getName());
+                debug("loading " + f.getName());
                 loadClass(pairName(pkg, f.getName().substring(0, f.getName().length()-".class".length())));
             }
         }
@@ -108,7 +108,7 @@ public class DynamicClassLoader extends ClassLoader {
         // first access of a class
         if (loadedClass == null) {
             if (l == null) {
-                info("delegating loading " + className + " to parent");
+                debug("delegating loading " + className + " to parent");
                 return getParent().loadClass(className);
             } else {
 
@@ -128,7 +128,7 @@ public class DynamicClassLoader extends ClassLoader {
 
         // subsequent access
         if (hasChanged(l.LOADER)) {
-            info("reloading " + className);
+            debug("reloading " + className);
             // unload and load again
             unload(loadedClass.loader);
             reload(loadedClass.loader); // FIXME: expensive
@@ -316,7 +316,7 @@ public class DynamicClassLoader extends ClassLoader {
 
             try {
                 long before = System.currentTimeMillis();
-                info("loading binary file " + classFile + " exist " + classFile.exists());
+                debug("loading binary file " + classFile + " exist " + classFile.exists());
 
                 // load class
                 clazz = loader.classLoader.loadClass(className);
@@ -324,13 +324,13 @@ public class DynamicClassLoader extends ClassLoader {
                 // load class success, remember timestamp
                 lastModified = classFile.lastModified();
 
-                info("took " + (System.currentTimeMillis()-before + " ms"));
+                debug("took " + (System.currentTimeMillis()-before + " ms"));
             } catch (ClassNotFoundException e) {
                 throw new RuntimeException("Failed to load class "
                         + classFile.getAbsolutePath(), e);
             }
 
-            info("Init " + clazz);
+            debug("Init " + clazz);
         }
     }
 
@@ -364,7 +364,7 @@ public class DynamicClassLoader extends ClassLoader {
             // check if class has been updated
             Class clz = loadClass(backendClassName);
             if (clz != null && backend.getClass() != clz) {
-                info("updating instance");
+                debug("updating instance");
                 if (backend instanceof Closeable) {
                     ((Closeable)backend).close();
                 }
@@ -418,8 +418,8 @@ public class DynamicClassLoader extends ClassLoader {
     /**
      * Log a message.
      */
-    private static void info(String msg) {
-        logger.info(msg);
+    private static void debug(String msg) {
+        logger.debug(msg);
     }
 
 }

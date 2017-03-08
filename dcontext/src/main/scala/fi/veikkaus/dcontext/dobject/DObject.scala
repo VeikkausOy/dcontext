@@ -1,14 +1,14 @@
 package fi.veikkaus.dcontext.dobject
 
-import java.io.File
+import java.io.{Closeable, File}
 
 import scala.concurrent.ExecutionContext.Implicits.global
-
 import fi.veikkaus.dcontext.MutableDContext
 import fi.veikkaus.dcontext.store._
 import fi.veikkaus.dcontext.value._
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
 import scala.util.Try
 
@@ -16,7 +16,15 @@ import scala.util.Try
 /**
   * Created by arau on 1.11.2016.
   */
-class DObject(val c:MutableDContext, val dname:String) {
+class DObject(val c:MutableDContext, val dname:String) extends Closeable {
+
+  private var closeables = ArrayBuffer[Closeable]()
+
+  private def bind[T <: Closeable](closeable:T): T = {
+    closeables += closeable
+    closeable
+  }
+
 
   val names = mutable.HashSet[String]()
 
@@ -26,23 +34,43 @@ class DObject(val c:MutableDContext, val dname:String) {
     fullName
   }
 
+  /**
+    * NOTE: this frees and closes only the heap resources.
+    * Dcontext and file system are left intact.
+    */
+  def close() = {
+    closeables.foreach { _.close() }
+    closeables.clear
+  }
+
+  /**
+    * NOTE: this frees both heap and it releases the dcontext resources
+    * Filesystem resources are left intact.
+    */
   def remove = {
+    close
     names.foreach ( c.remove(_) )
   }
 
-//  lazy val lock = contextVar(allocName(".lock"), new Object)
+  def heapTryStore[T](closer:Option[T => Unit] = None) = {
+    closer match {
+      case Some(c) => bind(new AutoClosedTryStore[T] (new HeapStore[Try[T]](), c))
+      case None => HeapStore[Try[T]]()
+    }
+  }
+  //  lazy val lock = contextVar(allocName(".lock"), new Object)
 
   def contextTryStore[T](n:String, closer:Option[T => Unit] = None) = {
     new ContextTryStore[T](c, allocName(n), closer)
   }
-  def contextStore[T](n:String) = {
-    new ContextStore[T](c, allocName(n))
+  def contextStore[T](n:String, closer:Option[T => Unit] = None) = {
+    new ContextStore[T](c, allocName(n), closer)
   }
-  def contextVar[T](n:String, init : => T) = {
-    new VersionedVar[T](new StoreVar[T](contextStore[T](n), init),
+  def contextVar[T](n:String, init : => T, closer : Option[T => Unit] = None) = {
+    new VersionedVar[T](new StoreVar[T](contextStore[T](n, closer), init),
                         new StoreVar[Long](contextStore[Long](n + ".version"), 0))
   }
-  def cvar[T] = contextVar[T] _
+  def cvar[T](n:String, init : => T, closer : Option[T => Unit] = None) = contextVar[T](n, init, closer)
   def lazyContextVal[T](n:String, init : => Future[T]) = {
     new AsyncLazyVal[T](new ContextStore[T](c, dname + "." + n), init)
   }
@@ -66,6 +94,11 @@ class DObject(val c:MutableDContext, val dname:String) {
          contextStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
   }
 
+  def makeHeapAutoClosed[Type, Source, Version](source:Versioned[Source, Version])(f:Source=>Future[Type])(closer:Type => Unit) = {
+    Make(heapTryStore[Type](Some(closer)),
+         HeapStore[Version]())(source)(f)
+  }
+
 }
 
 class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c, name) {
@@ -79,6 +112,9 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
     file
   }
 
+  /**
+    * NOTE: this frees heap resources, dcontext resources, and fs resources.
+    */
   def delete : Unit = {
     remove
     files.foreach( _.delete )
