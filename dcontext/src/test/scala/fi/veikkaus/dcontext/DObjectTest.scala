@@ -36,8 +36,8 @@ class DObjectTest extends TestSuite("dobject") {
     val b = cvar("b", 2)
     val x = cvar("x", 3)
 
-    val sum = make("sum", (a, b)) { case (a, b) => Future { a + b } }
-    val dec = make("dec", (sum, x)) { case (sum, x) => Future { sum - x } }
+    val sum = make("sum", a zip b) { case (a, b) => Future { a + b } }
+    val dec = make("dec", sum zip x) { case (sum, x) => Future { sum - x } }
 
     override def toString = {
       f"{a:${Await.result(a.get, 5 seconds)}, " +
@@ -53,9 +53,9 @@ class DObjectTest extends TestSuite("dobject") {
     val b = persistentVar("b", 2)
     val x = persistentVar("x", 3)
 
-    val div = makePersistent("div", (a, b)) { case (a, b) =>
+    val div = makePersistent("div", a zip b) { case (a, b) =>
       Future { a / b } }
-    val dec = makePersistent("dec", (div, x)) { case (div, x) => Future { div - x } }
+    val dec = makePersistent("dec", div zip x) { case (div, x) => Future { div - x } }
 
     val double = makeWrittenFile("file.bin", dec) { case (dec, f) =>
       Future { IoUtil.atomicWrite(f, 2 * dec) }
@@ -201,14 +201,14 @@ class DObjectTest extends TestSuite("dobject") {
       b
     }}
 
-    val div = make("div", (slowA, slowB)) { case (a, b) => Future { a / b } }
+    val div = make("div", slowA zip slowB) { case (a, b) => Future { a / b } }
 
     override def toString = {
       f"{a:${Await.result(a.get, 5 seconds)}, " +
         f"b:${Await.result(b.get, 5 seconds)}, " +
         f"slowA:${Await.result(slowA.get, 5 seconds)}, " +
         f"slowB:${Await.result(slowB.get, 5 seconds)}, " +
-        f"sum:${Await.result(div.get, 5 seconds)}}"
+        f"div:${Await.result(div.get, 5 seconds)}}"
 
     }
   }
@@ -291,4 +291,101 @@ class DObjectTest extends TestSuite("dobject") {
     }
 
   }
+
+  case class FragileException(e:String) extends RuntimeException(e)
+
+  class FailingTestObject(c: MutableDContext, t: String => Unit)
+    extends DObject(c, "barrier") {
+
+    var failing = true
+
+    val a = cvar("a", 4)
+    val b = cvar("b", 2)
+
+    def filter(e:Throwable) = e match {
+      case FragileException(_) => false
+      case _ => true
+    }
+
+    val failingA = make("failingA", a, Some(filter)) { case a => Future {
+      t("doing failingA..")
+      if (failing) {
+        t("failingA failed.")
+        throw FragileException("A failed!")
+      }
+      t("failingA done.")
+      a
+    }}
+    val failingB = make("failingB", b, Some(filter)) { case b => Future {
+      t("doing failingB..")
+      if (failing) {
+        t("failingB failed.")
+        throw FragileException("B failed!")
+      }
+      t("failingB done.")
+      b
+    }}
+
+    val div = make("div", failingA zip failingB) { case (a, b) => Future { a / b } }
+
+    override def toString = {
+      f"{a:${Await.result(a.get, 5 seconds)}, " +
+        f"b:${Await.result(b.get, 5 seconds)}, " +
+        f"failingA:${Await.result(failingA.get, 5 seconds)}, " +
+        f"failingB:${Await.result(failingB.get, 5 seconds)}, " +
+        f"div:${Await.result(div.get, 5 seconds)}}"
+
+    }
+  }
+
+
+  test("failing") { t =>
+    val c = MutableDContext()
+    tContext(t, c);
+
+  {
+    var buf = new StringBuffer()
+    val o = new FailingTestObject(c, x => buf.append("  " + x + "\n"))
+
+    t.tln("created test object")
+    t.tln
+    t.tln("making multiple requests to failing a.")
+    t.tln
+    t.tln(f"results is: ${Await.result(o.failingA.getTry, 5 seconds)}")
+    t.tln
+    t.tln("logs:")
+    t.iln(buf.toString)
+    buf = new StringBuffer()
+    t.tln
+    t.tln(f"results is: ${Await.result(o.failingA.getTry, 5 seconds)}")
+    t.tln
+    t.tln("logs:")
+    t.iln(buf.toString)
+    buf = new StringBuffer()
+    t.tln
+    t.tln(f"results is: ${Await.result(o.failingA.getTry, 5 seconds)}")
+    t.tln
+    t.tln("logs:")
+    t.iln(buf.toString)
+    buf = new StringBuffer()
+    t.tln
+
+    t.tln("making things succeed..")
+    o.failing = false
+    t.tln
+    t.tln(f"results is: ${Await.result(o.failingA.getTry, 5 seconds)}")
+    t.tln
+    t.tln("logs:")
+    t.iln(buf.toString)
+    buf = new StringBuffer()
+    t.tln
+    t.tln(f"results is: ${Await.result(o.failingA.getTry, 5 seconds)}")
+    t.tln
+    t.tln("logs:")
+    t.iln(buf.toString)
+    buf = new StringBuffer()
+    t.tln
+  }
+  }
+
 }

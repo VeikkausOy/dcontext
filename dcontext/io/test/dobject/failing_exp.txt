@@ -1,0 +1,40 @@
+context: 
+created test object
+
+making multiple requests to failing a.
+
+results is: Failure(fi.veikkaus.dcontext.DObjectTest$FragileException: A failed!)
+
+logs:
+  doing failingA..
+  failingA failed.
+
+
+results is: Failure(fi.veikkaus.dcontext.DObjectTest$FragileException: A failed!)
+
+logs:
+  doing failingA..
+  failingA failed.
+
+
+results is: Failure(fi.veikkaus.dcontext.DObjectTest$FragileException: A failed!)
+
+logs:
+  doing failingA..
+  failingA failed.
+
+
+making things succeed..
+
+results is: Success(4)
+
+logs:
+  doing failingA..
+  failingA done.
+
+
+results is: Success(4)
+
+logs:
+
+

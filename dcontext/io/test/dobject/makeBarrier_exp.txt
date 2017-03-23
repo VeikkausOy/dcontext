@@ -49,7 +49,7 @@ logs:
 
 results are: ((4,4),4)
 
-object is {a:8, b:2, slowA:8, slowB:2, sum:4}
+object is {a:8, b:2, slowA:8, slowB:2, div:4}
 
 context: 
   barrier.a            8

@@ -10,7 +10,8 @@ import fi.veikkaus.dcontext.value._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.Future
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
+import scalax.file.Path
 
 
 /**
@@ -63,6 +64,19 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   def contextTryStore[T](n:String, closer:Option[T => Unit] = None) = {
     new ContextTryStore[T](c, allocName(n), closer)
   }
+
+  def maybeFiltered[T](store:Store[Try[T]], filter:Option[Throwable => Boolean]) : Store[Try[T]] = {
+    filter match {
+      case Some(f) =>
+        new FilteredTryStore[T](store, _ match {
+          case Success(v) => true
+          case Failure(err) => f(err)
+        })
+      case None =>
+        store
+    }
+  }
+
   def contextStore[T](n:String, closer:Option[T => Unit] = None) = {
     new ContextStore[T](c, allocName(n), closer)
   }
@@ -74,31 +88,30 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   def lazyContextVal[T](n:String, init : => Future[T]) = {
     new AsyncLazyVal[T](new ContextStore[T](c, dname + "." + n), init)
   }
-  def make[Type, Source, Version](n:String, source:Versioned[Source, Version])(f:Source=>Future[Type]) = {
-    Make(contextStore[Try[Type]](n), contextStore[Version](f"$n.version"))(source)(f)
-  }
-  def make[Type, Source1, Version1, Source2, Version2]
-    (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-    (f:((Source1, Source2))=>Future[Type]) = {
-    Make(contextStore[Try[Type]](n), contextStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
-  }
-  def makeAutoClosed[Type, Source, Version](n:String, source:Versioned[Source, Version])(f:Source=>Future[Type])(closer:Type => Unit) = {
-    Make(contextTryStore[Type](n, Some(closer)),
+  def make[Type, Source, Version](n:String,
+                                  source:Versioned[Source, Version],
+                                  throwableFilter:Option[Throwable => Boolean] = None)
+                                 (f:Source=>Future[Type]) = {
+    Make(maybeFiltered(contextStore[Try[Type]](n), throwableFilter),
          contextStore[Version](f"$n.version"))(source)(f)
   }
-  def makeAutoClosed[Type, Source1, Version1, Source2, Version2]
-        (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-        (f:((Source1, Source2))=>Future[Type])
-        (closer:Type => Unit) = {
-    Make(contextTryStore[Type](n, Some(closer)),
-         contextStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
+  def makeAutoClosed[Type, Source, Version](n:String,
+                                            source:Versioned[Source, Version],
+                                            throwableFilter:Option[Throwable => Boolean] = None)(f:Source=>Future[Type])(closer:Type => Unit) = {
+    Make(maybeFiltered(contextTryStore[Type](n, Some(closer)), throwableFilter),
+         contextStore[Version](f"$n.version"))(source)(f)
   }
 
-  def makeHeapAutoClosed[Type, Source, Version](source:Versioned[Source, Version])(f:Source=>Future[Type])(closer:Type => Unit) = {
-    Make(heapTryStore[Type](Some(closer)),
+  def makeHeap[Type, Source, Version](source:Versioned[Source, Version],
+                                      throwableFilter:Option[Throwable => Boolean] = None)(f:Source=>Future[Type]) = {
+    Make(maybeFiltered(heapTryStore[Type](), throwableFilter),
          HeapStore[Version]())(source)(f)
   }
-
+  def makeHeapAutoClosed[Type, Source, Version](source:Versioned[Source, Version],
+                                                throwableFilter:Option[Throwable => Boolean] = None)(f:Source=>Future[Type])(closer:Type => Unit) = {
+    Make(maybeFiltered(heapTryStore[Type](Some(closer)), throwableFilter),
+         HeapStore[Version]())(source)(f)
+  }
 }
 
 class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c, name) {
@@ -108,17 +121,20 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
   def allocFile(n:String) = {
     dir.mkdirs()
     val file = new File(dir, n)
-    files += file
+    synchronized {
+      files += file
+    }
     file
   }
-
   /**
     * NOTE: this frees heap resources, dcontext resources, and fs resources.
     */
   def delete : Unit = {
     remove
-    files.foreach( _.delete )
-    dir.list().size == 0 && dir.delete()
+    synchronized {
+      files.foreach(_.delete)
+      dir.list().size == 0 && dir.delete()
+    }
   }
 
   def fileStore[T <: AnyRef](n:String) = {
@@ -149,42 +165,68 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
 
   /* stored mainly in filesystem, lifted to memory only as needed*/
   def makeFile[Type <: AnyRef, Source, Version]
-  (n:String, source:Versioned[Source, Version])
+  (n:String, source:Versioned[Source, Version], throwableFilter:Option[Throwable => Boolean] = None)
   (f:Source=>Future[Type]) = {
-    Make(fileTryStore[Type](n),
+    Make(
+      maybeFiltered(fileTryStore[Type](n), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source)(f)
   }
 
-  def makeFile[Type <: AnyRef, Source1, Version1, Source2, Version2]
-    (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-    (f:((Source1, Source2))=>Future[Type]) = {
-    Make(fileTryStore[Type](n),
-         contextAndFileStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
-  }
-
+  /**
+    * NOTE: the file given as an argument to writeFile() is a temporary file,
+    *       that is atomically renamed to the actual file, once ready
+    */
   def makeWrittenFile[Type <: AnyRef, Source, Version]
-  (n:String, source:Versioned[Source, Version])
-  (f:(Source, File)=>Future[Unit]) = {
+  (n:String,
+   source:Versioned[Source, Version],
+   throwableFilter:Option[Throwable => Boolean] = None)
+  (writeFile:(Source, File)=>Future[Unit]) = {
     val file = allocFile(n)
-    Make(new FileNameTryStore(file),
+    Make(maybeFiltered(new FileNameTryStore(file), throwableFilter),
          contextAndFileStore[Version](f"$n.version"))(source) { s =>
-      f(s, file).map { v => file }
+      val tmp = new File(file.getParent, file.getName + ".tmp")
+      tmp.delete()
+      writeFile(s, tmp).map { v =>
+        tmp.renameTo(file); // atomic replace
+        file
+      }
     }
   }
 
+  def makeWrittenDir[Type <: AnyRef, Source, Version]
+  (n:String,
+   source:Versioned[Source, Version],
+   throwableFilter:Option[Throwable => Boolean] = None)
+  (writeFile:(Source, File)=>Future[Unit]) = {
+    val dir = allocFile(n)
+    Make(maybeFiltered(new FileNameTryStore(dir), throwableFilter),
+      contextAndFileStore[Version](f"$n.version"))(source) { s =>
+      val tmp = new File(dir.getParent, dir.getName + ".tmp")
+      Path(tmp).deleteRecursively()
+      tmp.mkdirs()
+      writeFile(s, tmp).map { v =>
+        val del = new File(dir.getParent, dir.getName + ".del")
+        if (del.exists()) Path(del).deleteRecursively()
+        // unsafe non-atomic switch. Try to make it safer by using 'global lock'
+        c synchronized {
+          dir.renameTo(del)
+          tmp.renameTo(dir)
+        }
+        Path(del).deleteRecursively()
 
-  def makePersistent[Type, Source, Version]
-    (n:String, source:Versioned[Source, Version])
-    (f:Source=>Future[Type]) = {
-    Make(contextAndFileTryStore[Type](n),
-         contextAndFileStore[Version](f"$n.version"))(source)(f)
+        //
+        dir
+      }
+    }
   }
 
-  def makePersistent[Type, Source1, Version1, Source2, Version2]
-  (n:String, sources:(Versioned[Source1, Version1], Versioned[Source2, Version2]))
-  (f:((Source1, Source2))=>Future[Type]) = {
-    Make(contextAndFileTryStore[Type](n),
-         contextAndFileStore[(Version1, Version2)](f"$n.version"))(sources._1, sources._2)(f)
+  def makePersistent[Type, Source, Version]
+    (n:String,
+     source:Versioned[Source, Version],
+     throwableFilter:Option[Throwable => Boolean] = None)
+    (f:Source=>Future[Type]) = {
+    Make(maybeFiltered(contextAndFileTryStore[Type](n), throwableFilter),
+         contextAndFileStore[Version](f"$n.version"))(source)(f)
   }
 
 }

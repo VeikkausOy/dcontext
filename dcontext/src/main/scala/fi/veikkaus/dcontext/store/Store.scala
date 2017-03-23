@@ -35,6 +35,8 @@ object IoUtil {
 trait Store[T] {
   def get : Option[T]
   def update(t:Option[T])
+  def isEmpty : Boolean = get.isEmpty
+  def isDefined : Boolean = !isEmpty
   def delete = {}
 }
 
@@ -84,6 +86,9 @@ case class FileStore[T](file:File) extends Store[T] {
       case false => None
     }
   }
+  override def isEmpty = {
+    !file.exists()
+  }
   def update(t:Option[T]) = {
     t match {
       case None    => file.delete()
@@ -104,6 +109,9 @@ case class FileNameTryStore(file:File) extends Store[Try[File]] {
       case (None, true)   => Some(Success(file))
       case (None, false)  => None
     }
+  }
+  override def isEmpty = {
+    !file.exists() && errorStore.isEmpty
   }
   def update(t:Option[Try[File]]) = {
     t match {
@@ -127,6 +135,9 @@ case class FileTryStore[T](file:File) extends Store[Try[T]] {
     errorStore.delete
     store.delete
   }
+  override def isEmpty = {
+    store.isEmpty && errorStore.isEmpty
+  }
   def get = {
     (errorStore.get, store.get) match {
       case (Some(err), _) => Some(Failure(err))
@@ -143,11 +154,24 @@ case class FileTryStore[T](file:File) extends Store[Try[T]] {
   }
 }
 
+/**
+  * Filtered store will store None, if updated value doesn't match the filter
+  */
+case class FilteredTryStore[T](store:Store[Try[T]], filter : Try[T] => Boolean) extends Store[Try[T]] {
+  def get : Option[Try[T]] = store.get
+  def update(t:Option[Try[T]]) = {
+    store.update(t.filter(filter))
+  }
+  override def isEmpty : Boolean = store.isEmpty
+  override def delete = store.delete
+}
+
 case class CachedStore[T](cache:Store[T], box:Store[T]) extends Store[T] {
   override def delete: Unit = {
     cache.delete
     box.delete
   }
+  override def isEmpty: Boolean = cache.isEmpty && box.isEmpty
   def get = {
     cache.get match {
       case None => {

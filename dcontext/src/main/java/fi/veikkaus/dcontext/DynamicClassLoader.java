@@ -385,7 +385,7 @@ public class DynamicClassLoader extends ClassLoader {
                 return clz.getConstructor(constructorClasses).newInstance(constructorArgs);
             } catch (Exception e) {
                 throw new RuntimeException(
-                        "Failed to new instance of DynaCode class "
+                        "Failed to create new instance of the dynamically loaded class "
                                 + clz.getName(), e);
             }
         }

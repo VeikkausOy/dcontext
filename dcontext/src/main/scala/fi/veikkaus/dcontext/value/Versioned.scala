@@ -2,8 +2,9 @@ package fi.veikkaus.dcontext.value
 
 import fi.veikkaus.dcontext.MutableDContext
 import fi.veikkaus.dcontext.store.Store
+import org.slf4j.LoggerFactory
 
-import scala.concurrent.Future
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -31,8 +32,70 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 
 trait Versioned[Value, Version] {
-  // returns an updated version, if one exists
+  /**
+    * Returns an updated version, if one exists
+    * If there is no updated version, the future will return None
+   */
   def updated(version:Option[Version]) : Future[Option[(Try[Value], Version)]]
+
+  def map[Value2](f : Value => Value2) : Versioned[Value2, Version] = {
+    def self = this
+    new Versioned[Value2, Version] {
+      override def updated(version: Option[Version]): Future[Option[(Try[Value2], Version)]] = {
+        self.updated(version).map { _ map { case (t, v) =>
+            (t.map(f), v)
+          }
+        }
+      }
+    }
+  }
+
+  def mapWith[Value2](f : Value => Future[Value2]) : Versioned[Value2, Version] = {
+    def self = this
+    new Versioned[Value2, Version] {
+      override def updated(version: Option[Version]): Future[Option[(Try[Value2], Version)]] = {
+        self.updated(version).flatMap { _ match {
+          case Some((Success(value), version)) => f(value).map { value2 =>
+            Some((Success(value2), version))
+          }.recover { case err =>
+            Some((Failure(err)), version)
+          }
+          case Some((Failure(err), version)) =>
+            Future { Some((Failure(err), version)) }
+          case None => Future { None }
+          }
+        }
+      }
+    }
+  }
+
+  def mapTry[Value2](f : Try[Value] => Try[Value2]) = {
+    def self = this
+    new Versioned[Value2, Version] {
+      override def updated(version: Option[Version]): Future[Option[(Try[Value2], Version)]] = {
+        self.updated(version).map { _ map { case (t, v) =>
+            (f(t), v)
+          }
+        }
+      }
+    }
+  }
+
+  def mapUpdateWith[Value2](f : Option[(Try[Value], Version)] => Future[Option[(Try[Value2], Version)]]) = {
+    def self = this
+    new Versioned[Value2, Version] {
+      override def updated(version: Option[Version]): Future[Option[(Try[Value2], Version)]] = {
+        self.updated(version).flatMap { f }
+      }
+    }
+  }
+
+  def zip[Value2, Version2](v:Versioned[Value2, Version2]) = {
+    new VersionedPair[Value, Version, Value2, Version2](this, v)
+  }
+
+  /** hack for dealing with oddities in Scala's type inference */
+  def asVersioned = this
 }
 
 object Versioned {
@@ -46,12 +109,14 @@ object Versioned {
         }}
     }
   }
-  def apply[T](t: => T) : Versioned[T, Nil.type] = apply(t, Nil)
-  def apply() : Versioned[Nil.type, Nil.type] = apply(Nil, Nil)
+}
+
+object Version {
+  def apply[T](t: => T) = Versioned(t, t)
 }
 
 case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, VersionA],
-                                                      b:Versioned[TypeB, VersionB])
+                                                           b:Versioned[TypeB, VersionB])
   extends Versioned[(TypeA, TypeB), (VersionA, VersionB)] {
 
   private def zipTry(a:Try[TypeA], b:Try[TypeB]): Try[(TypeA, TypeB)] = {
@@ -84,34 +149,88 @@ case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, Ve
   }
 }
 
-case class VersionedSeq[T, V](vs:Seq[Versioned[T, V]])
-  extends Versioned[Seq[T], Seq[V]] {
+case class VersionedSeq[V, T, TV](seq:Versioned[Seq[Versioned[T, TV]], V])
+  extends Versioned[Seq[T], (V, Option[Seq[TV]])] {
+  private val logger = LoggerFactory.getLogger(getClass)
+
   // returns an updated version, if one exists
-  override def updated(version: Option[Seq[V]]): Future[Option[(Try[Seq[T]], Seq[V])]] = {
-    Future.sequence(
-      vs.zipWithIndex.map(e => (e._1, version.map(_(e._2)))).map { case (t, v) =>
-        t.updated(v)
-      }).flatMap { v =>
-      if (v.exists(_.isDefined)) { // if any of the entries has changed, recreate all
-        Future.sequence(
-          v.zipWithIndex.map { case (e, i) => e match {
-            case Some((t, v)) => Future{ (t, v) }
-            case None => vs(i).updated(None).map(_.get) // force retrieval of value
+  override def updated(version: Option[(V, Option[Seq[TV]])]): Future[Option[(Try[Seq[T]], (V, Option[Seq[TV]]))]] = {
+    // always fetch the most recent sequence version
+    logger.info("updated(" + version + ") called")
+    seq.updated(None).flatMap { case Some((trySeq, seqV)) =>
+      logger.info("new version is " + seqV)
+      trySeq match {
+        case Failure(e) =>
+          Future {
+            Some((Failure(e), (seqV, None)))
           }
-        }).map { _ match {
-          // fail, if there was any failure
-          case vs if vs.exists(_._1.isFailure) =>
-            val f = vs.find(_._1.isFailure).map(_._1.asInstanceOf[Failure[T]]).get
-            Some(Failure(f.exception) -> vs.map(_._2))
-              : Option[(Try[Seq[T]], Seq[V])]
-          // success
-          case vs =>
-            Some((Success(vs.map(_._1.get))) -> vs.map(_._2)) : Option[(Try[Seq[T]], Seq[V])]
-        }}
-      } else {
-        Future { None : Option[(Try[Seq[T]], Seq[V])] }
+        case Success(seq) =>
+          val versions = version match {
+            case None => // we didn't have any versions
+              None
+            case Some((sv, Some(vvs))) if (sv == seqV) => // sequence is still the same
+              Some(vvs)
+            case _ => // sequence has changed
+              None
+          }
+          logger.info("sequence size is " + seq.size)
+          logger.info("requested subversions are " + versions)
+          Future.sequence(
+            seq.zipWithIndex.map(e => (e._1 : Versioned[T, TV], versions.map(_ (e._2)))).map { case (t, v) =>
+              t.updated(v)
+            }).flatMap { v =>
+            if (v.exists(_.isDefined)) {
+              // if any of the entries has changed, recreate all
+              logger.info("current versions: " + v.map(_.map(_._2)).mkString(", "))
+              Future.sequence(
+                v.zipWithIndex.map { case (e, i) => e match {
+                  case Some((t, v)) => Future {
+                    (t, v)
+                  }
+                  case None => seq(i).updated(None).map(_.get) // force retrieval of value
+                }
+                }).map {
+                _ match {
+                  // fail, if there was any failure
+                  case vs if vs.exists(_._1.isFailure) =>
+                    val f = vs.find(_._1.isFailure).map(_._1.asInstanceOf[Failure[T]]).get
+                    logger.info("failed with " + f.exception)
+                    Some(Failure(f.exception) -> vs.map(_._2))
+                      : Option[(Try[Seq[T]], Seq[TV])]
+                  // success, all values retrieved for further processing
+                  case vs =>
+                    logger.info("succeeded.")
+                    Some((Success(vs.map(_._1.get))) -> vs.map(_._2)): Option[(Try[Seq[T]], Seq[TV])]
+                }
+              }
+            } else {
+              logger.info("nothing had changed.")
+              // nothing has changed, return success
+              Future {
+                None: Option[(Try[Seq[T]], Seq[TV])]
+              }
+            }
+          }.map {
+            _ match {
+
+              case Some((ts, vs)) =>
+                Some((ts, (seqV, Some(vs))))
+              case None =>
+                None // sequence version is the same, and all items are the same
+            }
+          }
+
       }
+
     }
+  }
+}
+
+object VersionedSeq {
+  def toVersioned[E <: Versioned[T, TV], T, TV](e:E) = e : Versioned[T, TV]
+
+  def from[V, T, TV](seq:Versioned[Seq[_ <: Versioned[T, TV]], V]): Unit = {
+    new VersionedSeq(seq.map[Seq[Versioned[T, TV]]](e => e.map(_.asInstanceOf[Versioned[T, TV]])))
   }
 }
 
