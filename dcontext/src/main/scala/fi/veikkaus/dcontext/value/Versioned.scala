@@ -47,6 +47,9 @@ trait Versioned[Value, Version] {
           }
         }
       }
+      override def toString = {
+        f"Versioned(${Versioned.this}).map($f)"
+      }
     }
   }
 
@@ -66,6 +69,9 @@ trait Versioned[Value, Version] {
           }
         }
       }
+      override def toString = {
+        f"Versioned(${Versioned.this}).mapWith($f)"
+      }
     }
   }
 
@@ -78,6 +84,9 @@ trait Versioned[Value, Version] {
           }
         }
       }
+      override def toString = {
+        f"Versioned(${Versioned.this}).mapTry($f)"
+      }
     }
   }
 
@@ -86,6 +95,9 @@ trait Versioned[Value, Version] {
     new Versioned[Value2, Version] {
       override def updated(version: Option[Version]): Future[Option[(Try[Value2], Version)]] = {
         self.updated(version).flatMap { f }
+      }
+      override def toString = {
+        f"Versioned(${Versioned.this}).mapUpdatedWith($f)"
       }
     }
   }
@@ -104,9 +116,12 @@ object Versioned {
     override def updated(version: Option[V]): Future[Option[(Try[T], V)]] = {
       Future {
         version match {
-          case vs if vs == v => None
-          case vs =>            Some(Success(t) -> v)
+          case Some(vs) if vs == v => None
+          case vs                  => Some(Success(t) -> v)
         }}
+    }
+    override def toString = {
+      f"Versioned(<value>, $v)"
     }
   }
 }
@@ -119,6 +134,8 @@ case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, Ve
                                                            b:Versioned[TypeB, VersionB])
   extends Versioned[(TypeA, TypeB), (VersionA, VersionB)] {
 
+  private val logger = LoggerFactory.getLogger(getClass)
+
   private def zipTry(a:Try[TypeA], b:Try[TypeB]): Try[(TypeA, TypeB)] = {
     (a, b) match {
       case (Success(a), Success(b)) => Success((a, b))
@@ -128,6 +145,7 @@ case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, Ve
   }
   // returns an updated version, if one exists
   override def updated(version: Option[(VersionA, VersionB)]) = {
+//    logger.info(f"updated($version) for VersionedPair ${this.hashCode()}")
     a.updated(version.map(_._1)) zip b.updated(version.map(_._2)) flatMap {
       _ match {
         case (None, None) => Future {
@@ -137,13 +155,21 @@ case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, Ve
           Some(zipTry(ar._1, br._1), (ar._2, br._2))
         }
         case (Some(ar), None) => // a had changes, let's get also b
-          b.updated(None).map { case Some(br) =>
-            Some(zipTry(ar._1, br._1), (ar._2, br._2))
-          }
+          b.updated(None).map { _ match {
+            case Some(br) =>
+              Some(zipTry(ar._1, br._1), (ar._2, br._2))
+            case None =>
+              logger.error(b + " failed to provide new state for VersionedPair " + this.hashCode)
+              throw new RuntimeException(b + " failed to provide new state for VersionedPair " + this.hashCode)
+          }}
         case (None, Some(br)) => // b had changes, let's get also a
-          a.updated(None).map { case Some(ar) =>
-            Some(zipTry(ar._1, br._1), (ar._2, br._2))
-          }
+          a.updated(None).map { _ match {
+            case Some(ar) =>
+              Some(zipTry(ar._1, br._1), (ar._2, br._2))
+            case None =>
+              logger.error(a + " failed to provide new state " + this.hashCode)
+              throw new RuntimeException(a + " failed to provide new state for VersionedPair " + this.hashCode)
+          }}
       }
     }
   }

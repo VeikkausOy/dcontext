@@ -3,12 +3,14 @@ package fi.veikkaus.dcontext.store
 import java.io._
 
 import fi.veikkaus.dcontext.MutableDContext
+import org.slf4j.LoggerFactory
 
 import scala.ref.WeakReference
 import scala.util.{Failure, Success, Try}
 
 
 object IoUtil {
+  private val logger = LoggerFactory.getLogger(getClass.getName)
   def readAny(file:File) = {
     val in = new ObjectInputStream(new FileInputStream(file))
     try {
@@ -25,6 +27,10 @@ object IoUtil {
     val out = new ObjectOutputStream(new FileOutputStream(tmpFile))
     try {
       out.writeObject(v)
+    } catch {
+      case e:Exception =>
+        logger.error(f"writing $v into ${file.getAbsolutePath} failed.", e)
+        throw e
     } finally {
       out.close
     }
