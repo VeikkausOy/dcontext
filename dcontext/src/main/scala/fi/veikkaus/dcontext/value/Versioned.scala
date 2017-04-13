@@ -108,6 +108,64 @@ trait Versioned[Value, Version] {
 
   /** hack for dealing with oddities in Scala's type inference */
   def asVersioned = this
+
+  def mapVersion[Version2](forward:Version=>Version2,
+                           backward: (Version2) => Option[Version] = (v:Version2) => None) = {
+    val self = this
+    new Versioned[Value, Version2] {
+      def updated(version: Option[Version2]): Future[Option[(Try[Value], Version2)]] = {
+        self.updated(version.flatMap(backward)).map { _ match {
+          case Some((value, v)) =>
+            val newVersion = forward(v)
+            if (Some(newVersion) == version)
+              None // nothing has changed
+            else
+              Some((value, newVersion))
+          case None => None
+        }
+        }
+      }
+    }
+  }
+
+  def mapVersionWith[Version2](f:Version=>Future[Version2]) = {
+    val self = this
+    new Versioned[Value, Version2] {
+      def updated(version: Option[Version2]): Future[Option[(Try[Value], Version2)]] = {
+        self.updated(None).flatMap { _ match {
+          case Some((value, v)) =>
+            f(v).map { newVersion =>
+              if (Some(newVersion) == version)
+                None // nothing has changed
+              else
+                Some((value, newVersion))
+            }
+        }
+        }
+      }
+    }
+  }
+
+  /**
+    * Returns a versioned object of form Versioned[Value, Value]
+    */
+  def valueAsVersion(failureVersion:Value) = {
+    val self = this
+    new Versioned[Value, Value] {
+      def updated(version: Option[Value]): Future[Option[(Try[Value], Value)]] = {
+        self.updated(None).map { _ match {
+          case Some((_, v)) if Some(v) == version => None // nothing has changed
+          case Some((Success(value), version)) => Some((Success(value), value))
+          case Some((Failure(err), version))   => Some((Failure(err), failureVersion))
+          }
+        }
+      }
+    }
+  }
+
+  def get = updated(None).map(_.get._1.get)
+  def getVersion = updated(None).map(_.get._2)
+
 }
 
 object Versioned {

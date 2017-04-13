@@ -137,9 +137,13 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
     }
   }
 
-  def fileStore[T <: AnyRef](n:String) = {
+  def rawFileStore[T](n:String) = {
     val file = allocFile(n)
-    CachedStore[T](WeakStore[T](), FileStore(file))
+    FileStore[T](file)
+  }
+
+  def fileStore[T <: AnyRef](n:String) = {
+    CachedStore[T](WeakStore[T](), rawFileStore[T](n))
   }
   def fileTryStore[T <: AnyRef](n:String) = {
     val file = allocFile(n)

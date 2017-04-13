@@ -173,7 +173,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   def storedVersion = versionStore.get
 
   def getTry = valueAndVersion.map(_._1)
-  def get = valueAndVersion.map(_._1.get)
+  override def get = valueAndVersion.map(_._1.get)
   def getFast = fastValueAndVersion.map(_._1.get)
   def getTryFast = fastValueAndVersion.map(_._1)
 
