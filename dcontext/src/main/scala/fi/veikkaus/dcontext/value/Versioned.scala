@@ -140,6 +140,8 @@ trait Versioned[Value, Version] {
               else
                 Some((value, newVersion))
             }
+          case None =>
+            throw new RuntimeException(f"$self.mapVersionWith($f)/updated($version) encountered None")
         }
         }
       }

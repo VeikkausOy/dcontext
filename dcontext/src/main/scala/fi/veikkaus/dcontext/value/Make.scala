@@ -62,6 +62,8 @@ class Guard[Value, Version](source:Versioned[Value, Version])
       }
     }
   }
+
+  def isUpdating = request.isDefined
 }
 
 
@@ -106,22 +108,10 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
 
   private val logger = LoggerFactory.getLogger(classOf[Make[Value, Source, Version]])
 
-  def make(u:Option[(Try[Source], Version)]) : Future[Option[(Try[Value], Version)]] = u match {
-    case None => Future { None }
-    case Some((t, version)) if (Some(version) == versionStore.get && valueStore.isDefined) =>
-      Future {
-        Some((valueStore.get.get, version))
-      }.recoverWith {
-        case e =>
-          logger.error("loading old value failed with " + e)
-          logger.info("reseting old value")
-          valueStore.update(None)
-          versionStore.update(None)
-          source.updated(Some(version)).flatMap(make)
-      }
-    case Some((t, version)) =>
-      logger.info("source: " + t.hashCode() + ", version: " + version)
-      t.map(v => build(v).map(Success(_)).recover { case err => Failure(err) })
+  def make(u:Option[(Try[Source], Version)]) : Future[Option[(Try[Value], Version)]] = {
+    def buildAndSave(sourceValue:Try[Source], version:Version) = {
+      logger.info("source: " + sourceValue.hashCode() + ", version: " + version)
+      sourceValue.map(v => build(v).map(Success(_)).recover { case err => Failure(err) })
         .recover { case err => Future { Failure(err) } }
         .get.map { t2 =>
         logger.info("build done.")
@@ -133,6 +123,25 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
         }
         Some((t2, version))
       }
+    }
+    u match {
+      case None => Future { None }
+      case Some((t, version)) if (Some(version) == versionStore.get && valueStore.isDefined) =>
+        Future {
+          Some((valueStore.get.get, version))
+        }.recoverWith {
+          case e =>
+            logger.error("loading old value failed with " + e)
+            logger.info("reseting old value")
+            synchronized {
+              valueStore.update(None)
+              versionStore.update(None)
+            }
+            buildAndSave(t, version) // just go recursive
+        }
+      case Some((t, version)) => buildAndSave(t, version)
+
+    }
   }
 
   val guard = new Guard(source.mapUpdateWith { make })
@@ -171,11 +180,14 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   }
 
   def storedVersion = versionStore.get
+  def storedTry = valueStore.get
 
   def getTry = valueAndVersion.map(_._1)
   override def get = valueAndVersion.map(_._1.get)
   def getFast = fastValueAndVersion.map(_._1.get)
   def getTryFast = fastValueAndVersion.map(_._1)
+
+  def isUpdating = guard.isUpdating
 
 }
 

@@ -3,6 +3,7 @@ package fi.veikkaus.dcontext.store
 import java.io._
 
 import fi.veikkaus.dcontext.MutableDContext
+import fi.veikkaus.dcontext.store.IoUtil.getClass
 import org.slf4j.LoggerFactory
 
 import scala.ref.WeakReference
@@ -77,6 +78,8 @@ case class WeakTryStore[T <: AnyRef](var value : Option[Try[WeakReference[T]]] =
   }
 }
 case class FileStore[T](file:File) extends Store[T] {
+  private val logger = LoggerFactory.getLogger(getClass.getName)
+
   override def delete: Unit = {
     file.delete
   }
@@ -87,6 +90,7 @@ case class FileStore[T](file:File) extends Store[T] {
           Some(IoUtil.read[T](file))
         } catch {
           case e: Exception =>
+            logger.error("reading object from " + file.getAbsolutePath + " failed", e)
             None
         }
       case false => None
