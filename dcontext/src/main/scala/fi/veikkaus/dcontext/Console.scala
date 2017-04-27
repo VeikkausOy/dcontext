@@ -91,12 +91,21 @@ class Console(var staticLayer : DContext = DContext.empty) extends DSystem {
 
   def list(c:MutableDContext, args:Array[String]) {
     val c = (staticLayer ++ dataLayer)
-    c.keySet.toArray.sorted.foreach { key =>
-      val v = c.getType(key).get
-      if (v.isAssignableFrom(classOf[HelpfulContextTask])) {
-        out.println(f"${key}%-30s ${c(key).asInstanceOf[HelpfulContextTask].help()}")
-      } else {
-        out.println(f"${key}%-30s ${v.getName}")
+    def list(filter:String => Boolean) = {
+      c.keySet.toArray.sorted.filter(filter).foreach { key =>
+        val v = c.getType(key).get
+        if (v.isAssignableFrom(classOf[HelpfulContextTask])) {
+          out.println(f"${key}%-30s ${c(key).asInstanceOf[HelpfulContextTask].help()}")
+        } else {
+          out.println(f"${key}%-30s ${v.getName}")
+        }
+      }
+    }
+    args match {
+      case Array() => list(_ => true)
+      case v => v.foreach { arg =>
+        val p = Pattern.compile(arg)
+        list(v => p.matcher(v).matches())
       }
     }
   }

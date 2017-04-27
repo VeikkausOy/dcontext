@@ -112,8 +112,10 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
     def buildAndSave(sourceValue:Try[Source], version:Version) = {
       logger.info("source: " + sourceValue.hashCode() + ", version: " + version)
       sourceValue.map(v => build(v).map(Success(_)).recover { case err => Failure(err) })
-        .recover { case err => Future { Failure(err) } }
-        .get.map { t2 =>
+        .recover { case err => Future {
+          logger.error(f"make ${Make.this.hashCode()} version $version failed with $err", err)
+          Failure(err) }
+        }.get.map { t2 =>
         logger.info("build done.")
         synchronized {
           valueStore.update (Some (t2) )
@@ -131,7 +133,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
           Some((valueStore.get.get, version))
         }.recoverWith {
           case e =>
-            logger.error("loading old value failed with " + e)
+            logger.error("loading old value failed with " + e, e)
             logger.info("reseting old value")
             synchronized {
               valueStore.update(None)
@@ -173,7 +175,9 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   def fastValueAndVersion : Future[(Try[Value], Version)] = {
     (valueStore.get, versionStore.get) match {
       case (Some(value), Some(version)) =>
-        updated(Some(version)) // update the value on the background
+        updated(Some(version)).foreach { e =>
+          // nothing
+        }
         Future { (value, version) }
       case _ => valueAndVersion
     }
