@@ -357,7 +357,6 @@ public class DynamicClassLoader extends ClassLoader {
                 throw new RuntimeException(e);
             }
         }
-
         public Object invoke(Object proxy, Method method, Object[] args)
                 throws Throwable {
 
@@ -381,13 +380,18 @@ public class DynamicClassLoader extends ClassLoader {
         }
 
         private Object newDynaCodeInstance(Class clz, Class[] constructorClasses, Object[] constructorArgs) {
+            ClassLoader oldCl = Thread.currentThread().getContextClassLoader();
+            Thread.currentThread().setContextClassLoader(DynamicClassLoader.this);
             try {
                 return clz.getConstructor(constructorClasses).newInstance(constructorArgs);
             } catch (Exception e) {
                 throw new RuntimeException(
                         "Failed to create new instance of the dynamically loaded class "
                                 + clz.getName(), e);
+            } finally {
+                Thread.currentThread().setContextClassLoader(oldCl);
             }
+
         }
 
     }
