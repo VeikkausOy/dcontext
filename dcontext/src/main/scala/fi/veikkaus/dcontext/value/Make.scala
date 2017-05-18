@@ -110,13 +110,13 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
 
   def make(u:Option[(Try[Source], Version)]) : Future[Option[(Try[Value], Version)]] = {
     def buildAndSave(sourceValue:Try[Source], version:Version) = {
-      logger.info("source: " + sourceValue.hashCode() + ", version: " + version)
+      logger.debug("source: " + sourceValue.hashCode() + ", version: " + version)
       sourceValue.map(v => build(v).map(Success(_)).recover { case err => Failure(err) })
         .recover { case err => Future {
           logger.error(f"make ${Make.this.hashCode()} version $version failed with $err", err)
           Failure(err) }
         }.get.map { t2 =>
-        logger.info("build done.")
+        logger.debug("build done.")
         synchronized {
           valueStore.update (Some (t2) )
           versionStore.update (
