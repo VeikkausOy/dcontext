@@ -91,24 +91,36 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   def make[Type, Source, Version](n:String,
                                   source:Versioned[Source, Version],
                                   throwableFilter:Option[Throwable => Boolean] = None)
-                                 (f:Source=>Future[Type]) = {
-    Make(maybeFiltered(contextStore[Try[Type]](n), throwableFilter),
+                                 (f:Source=>Future[Type])
+                                 (implicit valueRefs : ReferenceManagement[Type],
+                                  sourceRefs : ReferenceManagement[Source]) = {
+    Make(maybeFiltered(contextTryStore[Type](n, Some(valueRefs.dec)), throwableFilter),
          contextStore[Version](f"$n.version"))(source)(f)
   }
   def makeAutoClosed[Type, Source, Version](n:String,
                                             source:Versioned[Source, Version],
-                                            throwableFilter:Option[Throwable => Boolean] = None)(f:Source=>Future[Type])(closer:Type => Unit) = {
+                                            throwableFilter:Option[Throwable => Boolean] = None)
+                                           (f:Source=>Future[Type])(closer:Type => Unit)
+                                           (implicit valueRefs : ReferenceManagement[Type],
+                                            sourceRefs : ReferenceManagement[Source]) = {
     Make(maybeFiltered(contextTryStore[Type](n, Some(closer)), throwableFilter),
          contextStore[Version](f"$n.version"))(source)(f)
   }
 
   def makeHeap[Type, Source, Version](source:Versioned[Source, Version],
-                                      throwableFilter:Option[Throwable => Boolean] = None)(f:Source=>Future[Type]) = {
-    Make(maybeFiltered(heapTryStore[Type](), throwableFilter),
+                                      throwableFilter:Option[Throwable => Boolean] = None)
+                                     (f:Source=>Future[Type])
+                                     (implicit valueRefs : ReferenceManagement[Type],
+                                      sourceRefs : ReferenceManagement[Source])= {
+    Make(maybeFiltered(heapTryStore[Type](Some(valueRefs.dec)), throwableFilter),
          HeapStore[Version]())(source)(f)
   }
   def makeHeapAutoClosed[Type, Source, Version](source:Versioned[Source, Version],
-                                                throwableFilter:Option[Throwable => Boolean] = None)(f:Source=>Future[Type])(closer:Type => Unit) = {
+                                                throwableFilter:Option[Throwable => Boolean] = None)
+                                               (f:Source=>Future[Type])
+                                               (closer:Type => Unit)
+                                               (implicit valueRefs : ReferenceManagement[Type],
+                                                sourceRefs : ReferenceManagement[Source])= {
     Make(maybeFiltered(heapTryStore[Type](Some(closer)), throwableFilter),
          HeapStore[Version]())(source)(f)
   }
@@ -167,10 +179,14 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
                         new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
   }
 
-  /* stored mainly in filesystem, lifted to memory only as needed*/
+  /**
+    * TODO: add autoclosing using reference management
+    */
   def makeFile[Type <: AnyRef, Source, Version]
   (n:String, source:Versioned[Source, Version], throwableFilter:Option[Throwable => Boolean] = None)
-  (f:Source=>Future[Type]) = {
+  (f:Source=>Future[Type])
+  (implicit valueRefs : ReferenceManagement[Type],
+   sourceRefs : ReferenceManagement[Source])= {
     Make(
       maybeFiltered(fileTryStore[Type](n), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source)(f)
@@ -184,7 +200,8 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
   (n:String,
    source:Versioned[Source, Version],
    throwableFilter:Option[Throwable => Boolean] = None)
-  (writeFile:(Source, File)=>Future[Unit]) = {
+  (writeFile:(Source, File)=>Future[Unit])
+  (implicit sourceRefs : ReferenceManagement[Source])= {
     val file = allocFile(n)
     Make(maybeFiltered(new FileNameTryStore(file), throwableFilter),
          contextAndFileStore[Version](f"$n.version"))(source) { s =>
@@ -194,14 +211,19 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
         tmp.renameTo(file); // atomic replace
         file
       }
-    }
+    }(new DefaultReferenceManagement[File], sourceRefs)
   }
 
+  /**
+    * NOTE: There is a race condition, where abrubt shutdown make erase the
+    *       make's stored state, when make is storing the new state.
+    */
   def makeWrittenDir[Type <: AnyRef, Source, Version]
   (n:String,
    source:Versioned[Source, Version],
    throwableFilter:Option[Throwable => Boolean] = None)
-  (writeFile:(Source, File)=>Future[Unit]) = {
+  (writeFile:(Source, File)=>Future[Unit])
+  (implicit sourceRefs : ReferenceManagement[Source]) = {
     val dir = allocFile(n)
     Make(maybeFiltered(new FileNameTryStore(dir), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source) { s =>
@@ -221,14 +243,19 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
         //
         dir
       }
-    }
+    }(new DefaultReferenceManagement[File], sourceRefs)
   }
 
+  /**
+    * TODO: add autoclosing using reference management
+    */
   def makePersistent[Type, Source, Version]
     (n:String,
      source:Versioned[Source, Version],
      throwableFilter:Option[Throwable => Boolean] = None)
-    (f:Source=>Future[Type]) = {
+    (f:Source=>Future[Type])
+    (implicit valueRefs : ReferenceManagement[Type],
+     sourceRefs : ReferenceManagement[Source]) = {
     Make(maybeFiltered(contextAndFileTryStore[Type](n), throwableFilter),
          contextAndFileStore[Version](f"$n.version"))(source)(f)
   }

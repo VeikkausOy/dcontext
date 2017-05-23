@@ -1,6 +1,7 @@
 package fi.veikkaus.dcontext.value
 
 import java.io.{Closeable, File}
+import scala.reflect.runtime.universe._
 
 import fi.veikkaus.dcontext.store.Store
 import org.slf4j.LoggerFactory
@@ -9,7 +10,6 @@ import scala.collection.mutable
 import scala.concurrent.{Future, Promise}
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.ExecutionContext.Implicits.global
-
 import scala.concurrent.duration.Duration
 
 /**
@@ -90,25 +90,141 @@ class Build[Value, Source, Version](source : Versioned[Source, Version],
 
 }
 
+trait ReferenceManagement[T] {
+  def inc(v:T) : T
+  def dec(v:T) : Unit
+
+  def zip[E](r:ReferenceManagement[E]) =
+    new TupleReferenceManagement[T, E]()(this, r)
+}
+
+object ReferenceManagement {
+  implicit def implicits[T]/*(tag:TypeTag[T])*/ = {
+/*    tag.tpe match {
+      case TypeRef(_, Tuple2)
+    }*/
+    new DefaultReferenceManagement[T]
+  }
+}
+
+case class DefaultReferenceManagement[T]() extends ReferenceManagement[T] {
+  def inc(v:T) = v
+  def dec(v:T) = Unit
+}
+
+class TupleReferenceManagement[A, B]()(
+  implicit aRefs:ReferenceManagement[A],
+           bRefs:ReferenceManagement[B])
+  extends ReferenceManagement[(A, B)] {
+  def inc(v:(A, B)) = {
+    aRefs.inc(v._1)
+    try {
+      bRefs.inc(v._2)
+      v
+    } catch {
+      case e : Exception =>
+        aRefs.dec(v._1)
+        throw e
+    }
+  }
+  def dec(v:(A, B)) = {
+    aRefs.dec(v._1)
+    try {
+      bRefs.dec(v._2)
+    } catch {
+      case e : Exception =>
+        val logger = LoggerFactory.getLogger(getClass)
+        // likely fatal
+        logger.error("RESOURCE LEAK? decreasing reference failed", e)
+        aRefs.inc(v._1)
+        throw e
+    }
+  }
+}
+
+case class RefCounted[V <: Closeable](val value:V, val initCount:Int = 0) extends Closeable {
+  @volatile var count = initCount
+  def apply() = value
+  def inc = synchronized  {
+    count += 1
+    this
+  }
+  def dec = close
+  def open = synchronized  {
+    count += 1
+    value
+  }
+  override def hashCode(): Int = value.hashCode()
+  def close = synchronized {
+    count -= 1
+    if (count == 0) {
+      value.close
+    }
+  }
+  override def toString = {
+    count + "@" + value
+  }
+}
+
+case class RefCountManagement[T <: Closeable]() extends ReferenceManagement[RefCounted[T]] {
+  def inc(v:RefCounted[T]) = {
+    v.inc
+    v
+  }
+  def dec(v:RefCounted[T]) = {
+    v.dec
+  }
+}
+
 /**
   * Make establishes a simple build system, that is used for tracking various
   * values, that are build based on data from mutating sources.
   *
-  * Make wraps 'Build'-objet and provides one additional service:
+  * Make wraps 'Build'-object and provides few additional services:
   *
-  *   1. Cache
-  *   2.
+  *   1. Barrier to guarantee that build is only called once
+  *   2. Cache with storages
+  *   3. Versioning with cache, so that cache is only updated as needed
+  *
+  * NOTE on reference management:
+  *
+  *    1. It assumed that the reference is already increased..
+  *       A) ...inside the build function
+  *       B) ...and for the source
   *
   */
-class Make[Value, Source, Version](source : Versioned[Source, Version],
-                                   build : Source => Future[Value],
-                                   valueStore:Store[Try[Value]],
-                                   versionStore:Store[Version])
+class Make[Value, Source, Version](val source : Versioned[Source, Version],
+                                   val build : Source => Future[Value],
+                                   val valueStore:Store[Try[Value]],
+                                   val versionStore:Store[Version])(
+                                   implicit valueRefs : ReferenceManagement[Value],
+                                            sourceRefs : ReferenceManagement[Source])
   extends VersionedVal[Value, Version] {
 
   private val logger = LoggerFactory.getLogger(classOf[Make[Value, Source, Version]])
 
-  def make(u:Option[(Try[Source], Version)]) : Future[Option[(Try[Value], Version)]] = {
+  /**Reference management, because Scala lacks autopointers. */
+  def incValue(res:Option[(Try[Value], Version)]) = {
+    res match {
+      case Some((Success(value), _)) => valueRefs.inc(value)
+      case _ =>
+    }
+    res
+  }
+  def decValue(res:Option[(Try[Value], Version)]) =
+    res match {
+      case Some((Success(value), _)) => valueRefs.dec(value)
+      case _ =>
+    }
+
+  def decSource(res:Option[(Try[Source], Version)]) = {
+    res match {
+      case Some((Success(sourceValue), _)) => sourceRefs.dec(sourceValue)
+      case _ =>
+    }
+  }
+
+  def make(sourceResult:Option[(Try[Source], Version)]) : Future[Option[(Try[Value], Version)]] = {
     def buildAndSave(sourceValue:Try[Source], version:Version) = {
       logger.debug("source: " + sourceValue.hashCode() + ", version: " + version)
       sourceValue.map(v => build(v).map(Success(_)).recover { case err => Failure(err) })
@@ -126,7 +242,7 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
         Some((t2, version))
       }
     }
-    u match {
+    (sourceResult match {
       case None => Future { None }
       case Some((t, version)) if (Some(version) == versionStore.get && valueStore.isDefined) =>
         Future {
@@ -142,7 +258,10 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
             buildAndSave(t, version) // just go recursive
         }
       case Some((t, version)) => buildAndSave(t, version)
-
+    }).map { rv =>
+      // Do reference management, because ... Scala doesn't have RAII & autopointers
+      decSource(sourceResult)
+      incValue(rv)
     }
   }
 
@@ -151,34 +270,36 @@ class Make[Value, Source, Version](source : Versioned[Source, Version],
   def updated(version:Option[Version]) = guard.updated(version)
 
   def valueAndVersion : Future[(Try[Value], Version)] = {
-    updated(versionStore.get).flatMap(
-      _ match {
-        case None if (valueStore.isDefined && versionStore.isDefined) =>
-          logger.debug("getting recent version from store")
-          val before = System.currentTimeMillis()
-          val rv = Make.this.synchronized (valueStore.get.get, versionStore.get.get)
-          logger.debug("loading took " + (System.currentTimeMillis() - before) + "ms")
-          Future { rv }
-        case None =>
-          updated(None).map(_.get)
-        case Some(v) =>
-          Future { v }
-      }
-    )
+    updated(versionStore.get).flatMap( res =>
+      Make.this.synchronized {
+        res match {
+          case None if (valueStore.isDefined && versionStore.isDefined) =>
+            logger.debug("getting recent version from store")
+            val before = System.currentTimeMillis()
+            val rv = (valueStore.get.get.map(valueRefs.inc), versionStore.get.get)
+            logger.debug("loading took " + (System.currentTimeMillis() - before) + "ms")
+            Future { rv }
+          case None =>
+            updated(None).map(_.get)
+          case Some(v) =>
+            Future { v }
+        }
+    })
   }
 
   /**
     * Gets the immediately available result, but launches an update
     * on the background. If no immediate value is available:
-    * the method will block, until new once is build.
+    * the method will block, until new one is build.
     */
-  def fastValueAndVersion : Future[(Try[Value], Version)] = {
+  def fastValueAndVersion : Future[(Try[Value], Version)] = synchronized {
     (valueStore.get, versionStore.get) match {
       case (Some(value), Some(version)) =>
-        updated(Some(version)).foreach { e =>
-          // nothing
+        val rv = ((value.map(valueRefs.inc), version))
+        updated(Some(version)).foreach { res =>
+          decValue(res)
         }
-        Future { (value, version) }
+        Future { rv }
       case _ => valueAndVersion
     }
   }
@@ -199,17 +320,9 @@ object Make {
 
   def apply[Type, Source, Version](
       valueStore:Store[Try[Type]], versionStore:Store[Version])(
-      s1:Versioned[Source, Version])(build : Source => Future[Type]) = {
+      s1:Versioned[Source, Version])
+      (build : Source => Future[Type])
+      (implicit valueRefs : ReferenceManagement[Type], sourceRefs : ReferenceManagement[Source]) = {
     new Make[Type, Source, Version](s1, build, valueStore, versionStore)
-  }
-
-  def apply[Type, Source1, Version1, Source2, Version2](
-     valueStore:Store[Try[Type]], versionStore:Store[(Version1, Version2)])(
-     s1:Versioned[Source1, Version1], s2:Versioned[Source2, Version2])(build : ((Source1, Source2)) => Future[Type]) = {
-    new Make[Type, (Source1, Source2), (Version1, Version2)](
-      new VersionedPair[Source1, Version1, Source2, Version2](s1, s2),
-      build,
-      valueStore,
-      versionStore)
   }
 }
