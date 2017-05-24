@@ -64,6 +64,13 @@ class Guard[Value, Version](source:Versioned[Value, Version])(implicit refs:Refe
     }
   }
 
+  def completed = synchronized {
+    request match {
+      case None => Future { Unit }
+      case Some((v, f)) => f.map { v => Unit }
+    }
+  }
+
   def isUpdating = request.isDefined
 }
 
@@ -170,9 +177,7 @@ case class RefCounted[V <: Closeable](val value:V, val initCount:Int = 0) extend
       value.close
     }
   }
-  override def toString = {
-    count + "@" + value
-  }
+  override def toString = value.toString
 }
 
 case class RefCountManagement[T <: Closeable]() extends ReferenceManagement[RefCounted[T]] {
@@ -295,6 +300,8 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
         }
     })
   }
+
+  def completed = guard.completed
 
   /**
     * Gets the immediately available result, but launches an update

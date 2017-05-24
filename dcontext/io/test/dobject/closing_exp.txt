@@ -1,0 +1,34 @@
+started test.
+
+context: 
+
+created test object.
+
+@RefTestObject.dec:   started dec
+@RefTestObject.dec: slept, returning value
+object is {a:1, b:2, x:3, sum:3, dec:0}
+
+context: 
+  ref-test.a           1
+  ref-test.a.version   0
+  ref-test.b           2
+  ref-test.b.version   0
+  ref-test.dec         Success(0)
+  ref-test.dec.version ((0,0),(0,0))
+  ref-test.sleepMs     0
+  ref-test.sleepMs.version 0
+  ref-test.sum         Success(3)
+  ref-test.sum.version (0,0)
+  ref-test.x           3
+  ref-test.x.version   0
+
+let's first turn on sleep...
+sleep is now 250ms
+
+let's make request and immediately close the object..
+
+@RefTestObject.dec:   started dec
+@RefTestObject.dec: slept, returning value
+
+closing the object took 251 ms
+request 1 completed with result 0

@@ -486,20 +486,20 @@ class DObjectTest extends TestSuite("dobject") {
     }
   }
 
-
-  test("refs") { t =>
-    val registry = new CloseableRegistry()
-    def tRegistry() : Unit = {
-      t.tln
-      t.tln(registry.values.size + " objects are open:")
-      registry.values.foreach { v =>
-        t.tln("  " + v)
-      }
-      t.tln("  (end of list)")
-      t.tln
+  def tRegistry(registry:CloseableRegistry)(implicit t:TestTool) : Unit = {
+    t.tln
+    t.tln(registry.values.size + " objects are open:")
+    registry.values.foreach { v =>
+      t.tln("  " + v)
     }
+    t.tln("  (end of list)")
+    t.tln
+  }
+
+  test("refs") { implicit t =>
+    val registry = new CloseableRegistry()
     t.tln("started test.")
-    tRegistry();
+    tRegistry(registry);
     {
       val c = MutableDContext()
       tContext(t, c);
@@ -512,7 +512,7 @@ class DObjectTest extends TestSuite("dobject") {
       t.tln
 
       tContext(t, c)
-      tRegistry()
+      tRegistry(registry)
 
       o.a.update(4)
       t.tln("changed a to 4")
@@ -520,7 +520,7 @@ class DObjectTest extends TestSuite("dobject") {
       t.tln("object is " + o)
       t.tln
       tContext(t, c)
-      tRegistry()
+      tRegistry(registry)
 
       t.tln("let's do the test, where we break things")
 
@@ -536,7 +536,7 @@ class DObjectTest extends TestSuite("dobject") {
         o.sum.valueStore.update(None)
         t.tln
         t.tln("ref-test.sum is now: " + c.get[Any]("ref-test.sum"))
-        tRegistry()
+        tRegistry(registry)
         t.tln("let's wait for the result..")
         t.tln("dec is " + waitStringAndClose(decResult))
         t.tln
@@ -562,6 +562,41 @@ class DObjectTest extends TestSuite("dobject") {
       c.close
     }
     t.tln("closed the context and the test object.")
-    tRegistry()
+    tRegistry(registry)
   }
+
+  test("closing") { implicit t =>
+    val registry = new CloseableRegistry()
+    t.tln("started test.")
+    val c = MutableDContext()
+    t.tln
+    tContext(t, c);
+    t.tln
+
+
+    val o = new RefTestObject(c, t, registry)
+
+    t.tln("created test object.")
+    t.tln
+    t.tln("object is " + o)
+    t.tln
+
+    tContext(t, c)
+    t.tln
+
+    t.tln("let's first turn on sleep...")
+    o.sleepMs.update(250)
+    t.tln("sleep is now " + o.sleepMs() + "ms")
+    t.tln
+
+    t.tln("let's make request and immediately close the object..")
+    val decResult = o.dec.get
+    t.tln
+    val (ms, _) = TestTool.ms(o.close())
+    t.tln
+    t.iln("closing the object took " + ms + " ms")
+    if (ms < 200) t.tln("  ERROR: it should had taken about 250 milliseconds!!")
+    t.tln("request 1 completed with result " + waitStringAndClose(decResult))
+  }
+
 }

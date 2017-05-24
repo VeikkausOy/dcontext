@@ -1,15 +1,18 @@
 package fi.veikkaus.dcontext.dobject
 
 import java.io.{Closeable, File}
+import java.util.concurrent.{TimeUnit, TimeoutException}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import fi.veikkaus.dcontext.MutableDContext
 import fi.veikkaus.dcontext.store._
 import fi.veikkaus.dcontext.value._
+import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.Future
+import scala.concurrent.duration.Duration
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 import scalax.file.Path
 
@@ -18,6 +21,8 @@ import scalax.file.Path
   * Created by arau on 1.11.2016.
   */
 class DObject(val c:MutableDContext, val dname:String) extends Closeable {
+
+  private val logger = LoggerFactory.getLogger(getClass)
 
   private var closeables = ArrayBuffer[Closeable]()
 
@@ -40,7 +45,14 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
     * Dcontext and file system are left intact.
     */
   def close() = {
-    closeables.foreach { _.close() }
+    closeables.foreach { c =>
+      try {
+        c.close
+      } catch {
+        case e : Exception =>
+          logger.error("closing " + c + " failed.", e)
+      }
+     }
     closeables.clear
   }
 
@@ -88,13 +100,35 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   def lazyContextVal[T](n:String, init : => Future[T]) = {
     new AsyncLazyVal[T](new ContextStore[T](c, dname + "." + n), init)
   }
+  def addMake[Type, Source, Version](
+    valueStore:Store[Try[Type]], versionStore:Store[Version])(
+    source:Versioned[Source, Version])
+  (build : Source => Future[Type])
+  (implicit valueRefs : ReferenceManagement[Type], sourceRefs : ReferenceManagement[Source]) = {
+    val rv = Make(valueStore, versionStore)(source)(build)(valueRefs, sourceRefs)
+    bind (new Closeable {
+      def close = {
+        val res = rv.completed
+        while (!res.isCompleted) {
+          try {
+            Await.result(res, Duration(30, TimeUnit.SECONDS))
+          } catch {
+            case e : TimeoutException =>
+              logger.error("make failed to complete within 30 second, still waiting", e)
+          }
+        }
+      }
+    })
+    rv
+  }
+
   def make[Type, Source, Version](n:String,
                                   source:Versioned[Source, Version],
                                   throwableFilter:Option[Throwable => Boolean] = None)
                                  (f:Source=>Future[Type])
                                  (implicit valueRefs : ReferenceManagement[Type],
                                   sourceRefs : ReferenceManagement[Source]) = {
-    Make(maybeFiltered(contextTryStore[Type](n, Some(valueRefs.dec)), throwableFilter),
+    addMake(maybeFiltered(contextTryStore[Type](n, Some(valueRefs.dec)), throwableFilter),
          contextStore[Version](f"$n.version"))(source)(f)
   }
   def makeAutoClosed[Type, Source, Version](n:String,
@@ -103,7 +137,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
                                            (f:Source=>Future[Type])(closer:Type => Unit)
                                            (implicit valueRefs : ReferenceManagement[Type],
                                             sourceRefs : ReferenceManagement[Source]) = {
-    Make(maybeFiltered(contextTryStore[Type](n, Some(closer)), throwableFilter),
+    addMake(maybeFiltered(contextTryStore[Type](n, Some(closer)), throwableFilter),
          contextStore[Version](f"$n.version"))(source)(f)
   }
 
@@ -112,7 +146,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
                                      (f:Source=>Future[Type])
                                      (implicit valueRefs : ReferenceManagement[Type],
                                       sourceRefs : ReferenceManagement[Source])= {
-    Make(maybeFiltered(heapTryStore[Type](Some(valueRefs.dec)), throwableFilter),
+    addMake(maybeFiltered(heapTryStore[Type](Some(valueRefs.dec)), throwableFilter),
          HeapStore[Version]())(source)(f)
   }
   def makeHeapAutoClosed[Type, Source, Version](source:Versioned[Source, Version],
@@ -121,7 +155,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
                                                (closer:Type => Unit)
                                                (implicit valueRefs : ReferenceManagement[Type],
                                                 sourceRefs : ReferenceManagement[Source])= {
-    Make(maybeFiltered(heapTryStore[Type](Some(closer)), throwableFilter),
+    addMake(maybeFiltered(heapTryStore[Type](Some(closer)), throwableFilter),
          HeapStore[Version]())(source)(f)
   }
 }
@@ -187,7 +221,7 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
   (f:Source=>Future[Type])
   (implicit valueRefs : ReferenceManagement[Type],
    sourceRefs : ReferenceManagement[Source])= {
-    Make(
+    addMake(
       maybeFiltered(fileTryStore[Type](n), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source)(f)
   }
@@ -203,7 +237,7 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
   (writeFile:(Source, File)=>Future[Unit])
   (implicit sourceRefs : ReferenceManagement[Source])= {
     val file = allocFile(n)
-    Make(maybeFiltered(new FileNameTryStore(file), throwableFilter),
+    addMake(maybeFiltered(new FileNameTryStore(file), throwableFilter),
          contextAndFileStore[Version](f"$n.version"))(source) { s =>
       val tmp = new File(file.getParent, file.getName + ".tmp")
       tmp.delete()
@@ -225,7 +259,7 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
   (writeFile:(Source, File)=>Future[Unit])
   (implicit sourceRefs : ReferenceManagement[Source]) = {
     val dir = allocFile(n)
-    Make(maybeFiltered(new FileNameTryStore(dir), throwableFilter),
+    addMake(maybeFiltered(new FileNameTryStore(dir), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source) { s =>
       val tmp = new File(dir.getParent, dir.getName + ".tmp")
       Path(tmp).deleteRecursively()
@@ -256,7 +290,7 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
     (f:Source=>Future[Type])
     (implicit valueRefs : ReferenceManagement[Type],
      sourceRefs : ReferenceManagement[Source]) = {
-    Make(maybeFiltered(contextAndFileTryStore[Type](n), throwableFilter),
+    addMake(maybeFiltered(contextAndFileTryStore[Type](n), throwableFilter),
          contextAndFileStore[Version](f"$n.version"))(source)(f)
   }
 
