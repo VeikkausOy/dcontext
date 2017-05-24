@@ -17,7 +17,7 @@ import scala.concurrent.duration.Duration
  *
  * If there are several requests, these updates will get merged.
  */
-class Guard[Value, Version](source:Versioned[Value, Version])
+class Guard[Value, Version](source:Versioned[Value, Version])(implicit refs:ReferenceManagement[Value])
   extends Versioned[Value, Version] {
 
   private val logger = LoggerFactory.getLogger(classOf[Guard[Value, Version]])
@@ -28,7 +28,7 @@ class Guard[Value, Version](source:Versioned[Value, Version])
 
     /*
      * Split behavior based on a request has already been requested before.
-     * This is the segment, that implements the actul barrier logic
+     * This is the segment, that implements the actual barrier logic
      */
     request match {
       case None =>
@@ -48,6 +48,7 @@ class Guard[Value, Version](source:Versioned[Value, Version])
               if (version == Some(newestV)) {
                 None
               } else {
+                value.foreach { refs.inc } // additional value gets returned, it's caller's responsibility to clear it
                 Some((value, newestV))
               }
             }
@@ -81,10 +82,17 @@ class Guard[Value, Version](source:Versioned[Value, Version])
   *    B. and the build function & error management
   */
 class Build[Value, Source, Version](source : Versioned[Source, Version],
-                                    build : Source => Future[Value])
-  extends Versioned[Value, Version] {
+                                    build : Source => Future[Value])(
+                                   implicit valueRefs : ReferenceManagement[Value],
+                                   sourceRefs : ReferenceManagement[Source])  extends Versioned[Value, Version] {
 
-  val guard = new Guard(source.mapWith( build(_) ))
+  val guard =
+    new Guard(source.mapWith { sourceRes =>
+      build(sourceRes).map { value =>
+        sourceRefs.dec(sourceRes)
+        valueRefs.inc(value)
+      }
+    })(valueRefs)
 
   def updated(version:Option[Version]) = guard.updated(version)
 
@@ -156,6 +164,7 @@ case class RefCounted[V <: Closeable](val value:V, val initCount:Int = 0) extend
   }
   override def hashCode(): Int = value.hashCode()
   def close = synchronized {
+    if (count <= 0) throw new RuntimeException("cannot decrease ref count as it is already " + count)
     count -= 1
     if (count == 0) {
       value.close
@@ -265,7 +274,7 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
     }
   }
 
-  val guard = new Guard(source.mapUpdateWith { make })
+  val guard = new Guard(source.mapUpdateWith { make })(valueRefs)
 
   def updated(version:Option[Version]) = guard.updated(version)
 

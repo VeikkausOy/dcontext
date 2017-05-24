@@ -2,10 +2,14 @@ package fi.veikkaus.dcontext
 
 import java.io.{Closeable, IOException}
 
+import org.slf4j.LoggerFactory
+
 import scala.collection.mutable.HashMap
 
 
 class HashMapDContext extends MutableDContext {
+
+  private val logger = LoggerFactory.getLogger(getClass)
 
   private val data = new HashMap[String, Any]
   private val closeables = new HashMap[String, Closeable]
@@ -29,15 +33,13 @@ class HashMapDContext extends MutableDContext {
   override def close {
 
     import scala.collection.JavaConversions._
-
-    for (c <- closeables.values) {
+    for ((key, c) <- closeables) {
       if (c != null) {
         try {
           c.close
-        }
-        catch {
-          case e: IOException => {
-            throw new RuntimeException (e)
+        } catch {
+          case e: Exception => {
+            logger.error("closing '" + key + "' failed", e)
           }
         }
       }

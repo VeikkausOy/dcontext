@@ -73,6 +73,18 @@ let's wait for the result..
 dec is 2@3
 
 object is {a:4, b:2, x:3, sum:2@6, dec:2@3}
+let's check situation, where we have several requests
+
+let's update source data by settin a to 7
+let's request dec 3 times...
+@RefTestObject.dec:   started dec
+
+@RefTestObject.dec: slept, returning value
+dec request 1 resulted in 2@6
+dec request 2 resulted in 3@6
+dec request 3 resulted in 2@6
+
+object is {a:7, b:2, x:3, sum:2@9, dec:2@6}
 closed the context and the test object.
 
 0 objects are open:

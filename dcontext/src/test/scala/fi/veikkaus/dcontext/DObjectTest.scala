@@ -524,19 +524,39 @@ class DObjectTest extends TestSuite("dobject") {
 
       t.tln("let's do the test, where we break things")
 
-      t.tln("let's first turn on sleep...")
-      o.sleepMs.update(250)
-      t.tln("sleep is now " + o.sleepMs() + "ms")
-      t.tln("let's then request dec...")
-      val decResult = o.dec.get
-      Thread.sleep(100)
-      t.tln("...and close the sum, while dec is sleeping!")
-      o.sum.valueStore.update(None)
+      ;
+      {
+        t.tln("let's first turn on sleep...")
+        o.sleepMs.update(250)
+        t.tln("sleep is now " + o.sleepMs() + "ms")
+        t.tln("let's then request dec...")
+        val decResult = o.dec.get
+        Thread.sleep(100)
+        t.tln("...and close the sum, while dec is sleeping!")
+        o.sum.valueStore.update(None)
+        t.tln
+        t.tln("ref-test.sum is now: " + c.get[Any]("ref-test.sum"))
+        tRegistry()
+        t.tln("let's wait for the result..")
+        t.tln("dec is " + waitStringAndClose(decResult))
+        t.tln
+        t.tln("object is " + o)
+      }
+      t.tln("let's check situation, where we have several requests")
       t.tln
-      t.tln("ref-test.sum is now: " + c.get[Any]("ref-test.sum"))
-      tRegistry()
-      t.tln("let's wait for the result..")
-      t.tln("dec is " + waitStringAndClose(decResult))
+
+      t.tln("let's update source data by settin a to 7")
+      o.a.update(7)
+
+      t.tln("let's request dec 3 times...")
+      val decResult1 = o.dec.get
+      val decResult2 = o.dec.get
+      val decResult3 = o.dec.get
+      Thread.sleep(100)
+      t.tln
+      t.tln("dec request 1 resulted in " + waitStringAndClose(decResult1))
+      t.tln("dec request 2 resulted in " + waitStringAndClose(decResult2))
+      t.tln("dec request 3 resulted in " + waitStringAndClose(decResult3))
       t.tln
       t.tln("object is " + o)
       c.close
