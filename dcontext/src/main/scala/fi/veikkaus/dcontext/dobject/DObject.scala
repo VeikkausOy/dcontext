@@ -26,7 +26,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
 
   private var closeables = ArrayBuffer[Closeable]()
 
-  private def bind[T <: Closeable](closeable:T): T = {
+  def bind[T <: Closeable](closeable:T): T = {
     closeables += closeable
     closeable
   }
