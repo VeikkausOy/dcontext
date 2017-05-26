@@ -15,6 +15,10 @@ import java.util.*;
 
 public class DynamicClassLoader extends ClassLoader {
 
+    private static int CLASS_LOADING_RETRIES = 10;
+    private static int WAIT_COMPLICATION_MS = 500;// wait 500ms for complication to finish
+    private static int RETRY_WAIT_MS = WAIT_COMPLICATION_MS;
+
     private static Logger logger = LoggerFactory.getLogger(DynamicClassLoader.class);
 
     private ArrayList<ReloadableClassLoader> loaders = new ArrayList<>();
@@ -104,39 +108,65 @@ public class DynamicClassLoader extends ClassLoader {
         }
         String resource = className.replace('.', '/') + ".class";
         Location l = locateResource(resource);
+        if (l == null) {
+            debug("delegating loading " + className + " to parent");
+            return getParent().loadClass(className);
+        }
 
-        // first access of a class
-        if (loadedClass == null) {
-            if (l == null) {
-                debug("delegating loading " + className + " to parent");
-                return getParent().loadClass(className);
-            } else {
+        // NOTE: This is an unsafe
+        int retries = 0;
+        while (retries < CLASS_LOADING_RETRIES) {
+            long timeSinceCodeModified = System.currentTimeMillis() - l.lastModified();
 
-                synchronized (this) {
+            if (timeSinceCodeModified > WAIT_COMPLICATION_MS) {
+                // first access of a class
+                if (loadedClass == null) {
+                    synchronized (this) {
+                   // compile and load class
+                        loadedClass = new LoadedClass(className, l.LOADER);
 
-                    // compile and load class
-                    loadedClass = new LoadedClass(className, l.LOADER);
-
-                    synchronized (loadedClasses) {
-                        loadedClasses.put(className, loadedClass);
+                        synchronized (loadedClasses) {
+                            loadedClasses.put(className, loadedClass);
+                        }
                     }
                 }
+                // subsequent access
+                if (loadedClass.classFileExists()) { // compilation may be still running
+                    if (loadedClass.clazz == null) {
+                        loadedClass.loadClass();
+                    } else if (hasChanged(l.LOADER)) {
+                        debug("reloading " + className);
+                        // unload and load again
+                        unload(loadedClass.loader);
+                        reload(loadedClass.loader); // FIXME: expensive
 
-                return loadedClass.clazz;
+                        return loadClass(className);
+                    }
+                    return loadedClass.clazz;
+                } else {
+                    logger.warn("class file is missing.");
+                }
+            } else {
+                logger.warn("code was modified recently.");
+            }
+            try {
+                logger.warn("class is not yet ready, waiting " + RETRY_WAIT_MS + " ms for complication to complete.");
+                Thread.sleep(RETRY_WAIT_MS);
+            } catch (InterruptedException e) {
+                logger.error("complication waiting was interrupted", e);
+            }
+            retries++;
+        }
+        throw new RuntimeException("Failed to load class safely, because constant modifications in the class path.");
+    }
+    public long recursiveLastModified(File path) {
+        long max = path.lastModified();
+        if (path.isDirectory()) {
+            for (File f : path.listFiles()) {
+                max = Math.max(max, recursiveLastModified(f));
             }
         }
-
-        // subsequent access
-        if (hasChanged(l.LOADER)) {
-            debug("reloading " + className);
-            // unload and load again
-            unload(loadedClass.loader);
-            reload(loadedClass.loader); // FIXME: expensive
-
-            return loadClass(className);
-        }
-
-        return loadedClass.clazz;
+        return max;
     }
 
     private class Location {
@@ -145,6 +175,9 @@ public class DynamicClassLoader extends ClassLoader {
         Location(ReloadableClassLoader loader, File path) {
             LOADER = loader;
             PATH = path;
+        }
+        public long lastModified() {
+            return recursiveLastModified(PATH);
         }
     }
 
@@ -282,30 +315,38 @@ public class DynamicClassLoader extends ClassLoader {
 
         ReloadableClassLoader loader;
 
-        File classFile;
+        private File classFile;
 
         Class clazz;
 
         long lastModified;
 
+        public File classFile() {
+            if (classFile == null) {
+                String path = className.replace('.', '/');
+                // Assumption, file exists only in one directory!
+                for (File dir : loader.classPaths) {
+                    File f = new File(dir, path + ".class");
+                    if (f.exists()) {
+                        this.classFile = f;
+                    }
+                }
+            }
+            return classFile;
+        }
+
+        public boolean classFileExists() {
+            File f = classFile();
+            return f != null && f.exists();
+        }
+
         LoadedClass(String className, ReloadableClassLoader src) {
             this.className = className;
             this.loader = src;
-
-            String path = className.replace('.', '/');
-            // Assumption, file exists only in one directory!
-            for (File dir : src.classPaths) {
-                File f = new File(dir, path + ".class");
-                if (f.exists()) {
-                    this.classFile = f;
-                }
-            }
-
-            loadClass();
         }
 
         boolean isChanged() {
-            return classFile.lastModified() != lastModified;
+            return classFile().lastModified() != lastModified;
         }
 
         void loadClass() {
@@ -316,18 +357,18 @@ public class DynamicClassLoader extends ClassLoader {
 
             try {
                 long before = System.currentTimeMillis();
-                debug("loading binary file " + classFile + " exist " + classFile.exists());
+                debug("loading binary file " + classFile() + " exist " + classFile().exists());
 
                 // load class
                 clazz = loader.classLoader.loadClass(className);
 
                 // load class success, remember timestamp
-                lastModified = classFile.lastModified();
+                lastModified = classFile().lastModified();
 
                 debug("took " + (System.currentTimeMillis()-before + " ms"));
             } catch (ClassNotFoundException e) {
                 throw new RuntimeException("Failed to load class "
-                        + classFile.getAbsolutePath(), e);
+                        + classFile().getAbsolutePath(), e);
             }
 
             debug("Init " + clazz);
@@ -351,7 +392,7 @@ public class DynamicClassLoader extends ClassLoader {
 
             try {
                 Class clz = loadClass(backendClassName);
-                backend = newDynaCodeInstance(clz, constructorClasses, constructorArgs);
+                backend = newDynamicCodeInstance(clz, constructorClasses, constructorArgs);
 
             } catch (ClassNotFoundException e) {
                 throw new RuntimeException(e);
@@ -367,7 +408,7 @@ public class DynamicClassLoader extends ClassLoader {
                 if (backend instanceof Closeable) {
                     ((Closeable)backend).close();
                 }
-                backend = newDynaCodeInstance(clz, constructorClasses, constructorArgs);
+                backend = newDynamicCodeInstance(clz, constructorClasses, constructorArgs);
             }
 
             try {
@@ -379,7 +420,7 @@ public class DynamicClassLoader extends ClassLoader {
             }
         }
 
-        private Object newDynaCodeInstance(Class clz, Class[] constructorClasses, Object[] constructorArgs) {
+        private Object newDynamicCodeInstance(Class clz, Class[] constructorClasses, Object[] constructorArgs) {
             ClassLoader oldCl = Thread.currentThread().getContextClassLoader();
             Thread.currentThread().setContextClassLoader(DynamicClassLoader.this);
             try {
@@ -391,7 +432,6 @@ public class DynamicClassLoader extends ClassLoader {
             } finally {
                 Thread.currentThread().setContextClassLoader(oldCl);
             }
-
         }
 
     }
