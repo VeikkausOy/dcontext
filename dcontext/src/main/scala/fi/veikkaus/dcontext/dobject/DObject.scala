@@ -208,6 +208,12 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
                    FileStore(file))
   }
 
+  def fileVar[T <: AnyRef](n:String, init : => T) = {
+    new VersionedVar[T](
+      new StoreVar[T](fileStore[T](n), init),
+      new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
+  }
+
   def persistentVar[T](n:String, init : => T) = {
     new VersionedVar[T](new StoreVar[T](contextAndFileStore[T](n), init),
                         new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
