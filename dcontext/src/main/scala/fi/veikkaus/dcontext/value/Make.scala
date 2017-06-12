@@ -303,30 +303,46 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
 
   def completed = guard.completed
 
-  /**
-    * Gets the immediately available result, but launches an update
-    * on the background. If no immediate value is available:
-    * the method will block, until new one is build.
-    */
-  def fastValueAndVersion : Future[(Try[Value], Version)] = synchronized {
-    (valueStore.get, versionStore.get) match {
-      case (Some(value), Some(version)) =>
-        val rv = ((value.map(valueRefs.inc), version))
-        updated(Some(version)).foreach { res =>
+  class Stale extends Versioned[Value, Version] {
+    def updated(version:Option[Version]) = {
+      if (version.isDefined && version == versionStore.get ) {
+        // kick the update process on the background, even if requester has the cached version
+        Make.this.updated(version).foreach { res =>
           decValue(res)
         }
-        Future { rv }
-      case _ => valueAndVersion
+        Future.successful(None)
+      } else
+        valueAndVersion.map(v => Some(v))
     }
+    /**
+      * Gets the immediately available result, but launches an update
+      * on the background. If no immediate value is available:
+      * the method will block, until new one is build.
+      */
+    def valueAndVersion : Future[(Try[Value], Version)] = synchronized {
+      (valueStore.get, versionStore.get) match {
+        case (Some(value), Some(version)) =>
+          val rv = ((value.map(valueRefs.inc), version))
+          Make.this.updated(Some(version)).foreach { res =>
+            decValue(res)
+          }
+          Future { rv }
+        case _ => Make.this.valueAndVersion
+      }
+    }
+    override def get = valueAndVersion.map(_._1.get)
+    def getTry = valueAndVersion.map(_._1)
+
   }
 
+  val stale = new Stale()
+
+  // TODO: remove these
   def storedVersion = versionStore.get
   def storedTry = valueStore.get
 
   def getTry = valueAndVersion.map(_._1)
   override def get = valueAndVersion.map(_._1.get)
-  def getFast = fastValueAndVersion.map(_._1.get)
-  def getTryFast = fastValueAndVersion.map(_._1)
 
   def isUpdating = guard.isUpdating
 

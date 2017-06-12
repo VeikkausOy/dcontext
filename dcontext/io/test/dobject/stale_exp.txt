@@ -1,0 +1,35 @@
+context: 
+created test object
+
+object is {a:1, b:2, x:3, sum:3, dec:0}
+
+context: 
+  test.a               1
+  test.a.version       0
+  test.b               2
+  test.b.version       0
+  test.dec             Success(0)
+  test.dec.version     ((0,0),0)
+  test.sum             Success(3)
+  test.sum.version     (0,0)
+  test.x               3
+  test.x.version       0
+
+dec is 0
+sum is 3
+changed a to 4
+
+sum.stale is 3
+staleDec is 0
+staleDec.stale is 0
+dec.stale is 0
+
+wait 300ms for the values to update on backround.
+
+sum.stale is 6
+staleDec is 3
+staleDec.stale is 3
+dec.stale is 3
+
+dec is 3
+sum is 6

@@ -19,8 +19,12 @@ class DObjectTest extends TestSuite("dobject") {
 
   import fi.veikkaus.dcontext.value.ReferenceManagement.implicits
 
-  def waitString[T](t:Awaitable[T]): String = {
-    try { Await.result(t, 5 seconds).toString } catch { case e : Exception => "!'" + e.toString + "'"}
+  def waitString[T](t: Awaitable[T]): String = {
+    try {
+      Await.result(t, 5 seconds).toString
+    } catch {
+      case e: Exception => "!'" + e.toString + "'"
+    }
   }
 
   def cut(s: String, n: Int) = s.take(n) + (if (s.size > n) "..." else "")
@@ -422,29 +426,35 @@ class DObjectTest extends TestSuite("dobject") {
 
   class CloseableRegistry {
     val values = new ArrayBuffer[Closeable]()
-    def add(v:Closeable): Unit = synchronized {
-       values += v
+
+    def add(v: Closeable): Unit = synchronized {
+      values += v
     }
-    def remove(v:Closeable) : Unit = synchronized {
+
+    def remove(v: Closeable): Unit = synchronized {
       values.remove(values.indexOf(v))
     }
   }
 
-  class CloseableValue[T](name:String, v:T, registry:CloseableRegistry) extends Closeable {
+  class CloseableValue[T](name: String, v: T, registry: CloseableRegistry) extends Closeable {
     registry.add(this)
-    private var value : Option[T] = Some(v)
+    private var value: Option[T] = Some(v)
+
     def get = value.getOrElse(throw new RuntimeException(name + " was closed"))
-    def update(v:T) = {
+
+    def update(v: T) = {
       value = Some(v)
     }
+
     def close = {
       registry.remove(this)
       value = None
     }
+
     override def toString = value.map(_.toString).getOrElse("(closed)")
   }
 
-  def waitStringAndClose[T](t:Awaitable[RefCounted[CloseableValue[T]]]): String = {
+  def waitStringAndClose[T](t: Awaitable[RefCounted[CloseableValue[T]]]): String = {
     try {
       val openedRef = Await.result(t, 5 seconds)
       try {
@@ -452,25 +462,27 @@ class DObjectTest extends TestSuite("dobject") {
       } finally {
         openedRef.close
       }
-    } catch { case e : Exception => "!'" + e.toString + "'"}
+    } catch {
+      case e: Exception => "!'" + e.toString + "'"
+    }
   }
 
-  class RefTestObject(c: MutableDContext, t:TestTool, registry:CloseableRegistry) extends DObject(c, "ref-test") {
+  class RefTestObject(c: MutableDContext, t: TestTool, registry: CloseableRegistry) extends DObject(c, "ref-test") {
     val a = cvar("a", 1)
     val b = cvar("b", 2)
     val x = cvar("x", 3)
     val sleepMs = cvar("sleepMs", 0)
 
     val sum = make("sum", a zip b) { case (a, b) => Future {
-        RefCounted(new CloseableValue[Int]("sum", a + b, registry), 1)
-      }
+      RefCounted(new CloseableValue[Int]("sum", a + b, registry), 1)
+    }
     }(new RefCountManagement[CloseableValue[Int]], new DefaultReferenceManagement[(Int, Int)])
     val dec = make("dec", sum zip (x zip sleepMs)) { case (sum, (x, sleepMs)) => Future {
-        t.tln("@RefTestObject.dec:   started dec")
-        Thread.sleep(sleepMs) // give us time to close the sum
-        t.tln("@RefTestObject.dec: slept, returning value")
-        RefCounted(new CloseableValue[Int]("dec", sum.value.get - x, registry), 1)
-      }
+      t.tln("@RefTestObject.dec:   started dec")
+      Thread.sleep(sleepMs) // give us time to close the sum
+      t.tln("@RefTestObject.dec: slept, returning value")
+      RefCounted(new CloseableValue[Int]("dec", sum.value.get - x, registry), 1)
+    }
     }(new RefCountManagement[CloseableValue[Int]],
       new TupleReferenceManagement[RefCounted[CloseableValue[Int]], (Int, Int)]()(
         new RefCountManagement[CloseableValue[Int]],
@@ -486,7 +498,7 @@ class DObjectTest extends TestSuite("dobject") {
     }
   }
 
-  def tRegistry(registry:CloseableRegistry)(implicit t:TestTool) : Unit = {
+  def tRegistry(registry: CloseableRegistry)(implicit t: TestTool): Unit = {
     t.tln
     t.tln(registry.values.size + " objects are open:")
     registry.values.foreach { v =>
@@ -500,67 +512,65 @@ class DObjectTest extends TestSuite("dobject") {
     val registry = new CloseableRegistry()
     t.tln("started test.")
     tRegistry(registry);
+  {
+    val c = MutableDContext()
+    tContext(t, c);
+
+    val o = new RefTestObject(c, t, registry)
+
+    t.tln("created test object.")
+    t.tln
+    t.tln("object is " + o)
+    t.tln
+
+    tContext(t, c)
+    tRegistry(registry)
+
+    o.a.update(4)
+    t.tln("changed a to 4")
+    t.tln
+    t.tln("object is " + o)
+    t.tln
+    tContext(t, c)
+    tRegistry(registry)
+
+    t.tln("let's do the test, where we break things");
     {
-      val c = MutableDContext()
-      tContext(t, c);
-
-      val o = new RefTestObject(c, t, registry)
-
-      t.tln("created test object.")
-      t.tln
-      t.tln("object is " + o)
-      t.tln
-
-      tContext(t, c)
-      tRegistry(registry)
-
-      o.a.update(4)
-      t.tln("changed a to 4")
-      t.tln
-      t.tln("object is " + o)
-      t.tln
-      tContext(t, c)
-      tRegistry(registry)
-
-      t.tln("let's do the test, where we break things")
-
-      ;
-      {
-        t.tln("let's first turn on sleep...")
-        o.sleepMs.update(250)
-        t.tln("sleep is now " + o.sleepMs() + "ms")
-        t.tln("let's then request dec...")
-        val decResult = o.dec.get
-        Thread.sleep(100)
-        t.tln("...and close the sum, while dec is sleeping!")
-        o.sum.valueStore.update(None)
-        t.tln
-        t.tln("ref-test.sum is now: " + c.get[Any]("ref-test.sum"))
-        tRegistry(registry)
-        t.tln("let's wait for the result..")
-        t.tln("dec is " + waitStringAndClose(decResult))
-        t.tln
-        t.tln("object is " + o)
-      }
-      t.tln("let's check situation, where we have several requests")
-      t.tln
-
-      t.tln("let's update source data by settin a to 7")
-      o.a.update(7)
-
-      t.tln("let's request dec 3 times...")
-      val decResult1 = o.dec.get
-      val decResult2 = o.dec.get
-      val decResult3 = o.dec.get
+      t.tln("let's first turn on sleep...")
+      o.sleepMs.update(250)
+      t.tln("sleep is now " + o.sleepMs() + "ms")
+      t.tln("let's then request dec...")
+      val decResult = o.dec.get
       Thread.sleep(100)
+      t.tln("...and close the sum, while dec is sleeping!")
+      o.sum.valueStore.update(None)
       t.tln
-      t.tln("dec request 1 resulted in " + waitStringAndClose(decResult1))
-      t.tln("dec request 2 resulted in " + waitStringAndClose(decResult2))
-      t.tln("dec request 3 resulted in " + waitStringAndClose(decResult3))
+      t.tln("ref-test.sum is now: " + c.get[Any]("ref-test.sum"))
+      tRegistry(registry)
+      t.tln("let's wait for the result..")
+      t.tln("dec is " + waitStringAndClose(decResult))
       t.tln
       t.tln("object is " + o)
-      c.close
     }
+    t.tln("let's check situation, where we have several requests")
+    t.tln
+
+    t.tln("let's update source data by settin a to 7")
+    o.a.update(7)
+
+    t.tln("let's request dec 3 times...")
+    val decResult1 = o.dec.get
+    val decResult2 = o.dec.get
+    val decResult3 = o.dec.get
+    Thread.sleep(100)
+    t.tln
+    t.tln("dec request 1 resulted in " + waitStringAndClose(decResult1))
+    t.tln("dec request 2 resulted in " + waitStringAndClose(decResult2))
+    t.tln("dec request 3 resulted in " + waitStringAndClose(decResult3))
+    t.tln
+    t.tln("object is " + o)
+    c.close
+  }
     t.tln("closed the context and the test object.")
     tRegistry(registry)
   }
@@ -599,4 +609,68 @@ class DObjectTest extends TestSuite("dobject") {
     t.tln("request 1 completed with result " + waitStringAndClose(decResult))
   }
 
+  class SlowTestObject(c: MutableDContext) extends DObject(c, "test") {
+    val a = cvar("a", 1)
+    val b = cvar("b", 2)
+    val x = cvar("x", 3)
+
+    val sum = make("sum", a zip b) { case (a, b) => Future {
+      Thread.sleep(100)
+      a + b
+    }
+    }
+    val dec = make("dec", sum zip x) { case (sum, x) => Future {
+      sum - x
+    }
+    }
+    val staleDec = make("staleDec", sum.stale zip x) { case (sum, x) => Future {
+      sum - x
+    }
+    }
+
+    override def toString = {
+      f"{a:${Await.result(a.get, 5 seconds)}, " +
+        f"b:${Await.result(b.get, 5 seconds)}, " +
+        f"x:${Await.result(x.get, 5 seconds)}, " +
+        f"sum:${Await.result(sum.get, 5 seconds)}, " +
+        f"dec:${Await.result(dec.get, 5 seconds)}}"
+    }
+  }
+
+  test("stale")(Tests.inTestContext { (t, c) => {
+    tContext(t, c)
+
+    val o = new SlowTestObject(c)
+    t.tln("created test object")
+    t.tln
+    t.tln("object is " + o)
+    t.tln
+    tContext(t, c)
+    t.tln
+    t.tln("dec is " + Await.result(o.dec.get, 5 seconds))
+    t.tln("sum is " + Await.result(o.sum.get, 5 seconds))
+
+    o.a.update(4)
+    t.tln("changed a to 4")
+    t.tln
+    t.tln("sum.stale is " + Await.result(o.sum.stale.get, 5 seconds))
+    t.tln("staleDec is " + Await.result(o.staleDec.get, 5 seconds))
+    t.tln("staleDec.stale is " + Await.result(o.staleDec.stale.get, 5 seconds))
+    t.tln("dec.stale is " + Await.result(o.dec.stale.get, 5 seconds))
+    t.tln
+    t.tln("wait 300ms for the values to update on backround.")
+    Thread.sleep(500)
+    t.tln
+    t.tln("sum.stale is " + Await.result(o.sum.stale.get, 5 seconds))
+    t.tln("staleDec is " + Await.result(o.staleDec.get, 5 seconds))
+    t.tln("staleDec.stale is " + Await.result(o.staleDec.stale.get, 5 seconds))
+    t.tln("dec.stale is " + Await.result(o.dec.stale.get, 5 seconds))
+    t.tln
+    t.tln("dec is " + Await.result(o.dec.get, 5 seconds))
+    t.tln("sum is " + Await.result(o.sum.get, 5 seconds))
+  }
+  })
+
 }
+
+
