@@ -32,6 +32,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 
 trait Versioned[Value, Version] {
+
   /**
     * Returns an updated version, if one exists
     * If there is no updated version, the future will return None

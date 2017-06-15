@@ -284,6 +284,7 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
   def updated(version:Option[Version]) = guard.updated(version)
 
   def valueAndVersion : Future[(Try[Value], Version)] = {
+
     updated(versionStore.get).flatMap( res =>
       Make.this.synchronized {
         res match {

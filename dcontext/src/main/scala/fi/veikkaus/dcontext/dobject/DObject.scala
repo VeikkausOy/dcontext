@@ -138,7 +138,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
                                            (implicit valueRefs : ReferenceManagement[Type],
                                             sourceRefs : ReferenceManagement[Source]) = {
     addMake(maybeFiltered(contextTryStore[Type](n, Some(closer)), throwableFilter),
-         contextStore[Version](f"$n.version"))(source)(f)
+                          contextStore[Version](f"$n.version"))(source)(f)
   }
 
   def makeHeap[Type, Source, Version](source:Versioned[Source, Version],
