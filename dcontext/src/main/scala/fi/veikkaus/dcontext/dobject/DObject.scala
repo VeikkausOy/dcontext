@@ -1,6 +1,6 @@
 package fi.veikkaus.dcontext.dobject
 
-import java.io.{Closeable, File}
+import java.io.{Closeable, File, StringWriter}
 import java.util.concurrent.{CancellationException, TimeUnit, TimeoutException}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -141,15 +141,16 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   (implicit valueRefs : ReferenceManagement[Type], sourceRefs : ReferenceManagement[Source]) = {
     val rv = Make(valueStore, versionStore)(source)(build)(valueRefs, sourceRefs)
     processes += rv // first close makes, in order to prevent creation of new tasks
+    val stackTracer = new RuntimeException("make created here")
     bind (new Closeable {
       def close = {
         val res = rv.completed
         while (!res.isCompleted) {
           try {
-            Await.result(res, Duration(30, TimeUnit.SECONDS))
+            Await.result(res, Duration(5*60, TimeUnit.SECONDS))
           } catch {
             case e : TimeoutException =>
-              logger.error("make failed to complete within 30 second, still waiting", e)
+              logger.error("make failed to complete within 30 second, still waiting", stackTracer)
           }
         }
       }
