@@ -1,13 +1,14 @@
 package fi.veikkaus.dcontext.value
 
 import java.io.{Closeable, File}
-import scala.reflect.runtime.universe._
+import java.util.concurrent.RejectedExecutionException
 
+import scala.reflect.runtime.universe._
 import fi.veikkaus.dcontext.store.Store
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{CancellationException, Future, Promise}
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
@@ -190,6 +191,10 @@ case class RefCountManagement[T <: Closeable]() extends ReferenceManagement[RefC
   }
 }
 
+case class MakeException(msg:String) extends RuntimeException(msg) {
+
+}
+
 /**
   * Make establishes a simple build system, that is used for tracking various
   * values, that are build based on data from mutating sources.
@@ -213,9 +218,15 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
                                    val versionStore:Store[Version])(
                                    implicit valueRefs : ReferenceManagement[Value],
                                             sourceRefs : ReferenceManagement[Source])
-  extends VersionedVal[Value, Version] {
+  extends VersionedVal[Value, Version] with Closeable {
 
   private val logger = LoggerFactory.getLogger(classOf[Make[Value, Source, Version]])
+
+  var isClosed = false
+
+  def close = {
+    isClosed = true
+  }
 
   /**Reference management, because Scala lacks autopointers. */
   def incValue(res:Option[(Try[Value], Version)]) = {
@@ -241,19 +252,37 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
   def make(sourceResult:Option[(Try[Source], Version)]) : Future[Option[(Try[Value], Version)]] = {
     def buildAndSave(sourceValue:Try[Source], version:Version) = {
       logger.debug("source: " + sourceValue.hashCode() + ", version: " + version)
-      sourceValue.map(v => build(v).map(Success(_)).recover { case err => Failure(err) })
-        .recover { case err => Future {
-          logger.error(f"make ${Make.this.hashCode()} version $version failed with $err", err)
-          Failure(err) }
-        }.get.map { t2 =>
-        logger.debug("build done.")
-        synchronized {
-          valueStore.update (Some (t2) )
-          versionStore.update (
-            Some (version).filter(e => valueStore.isDefined)
-          )
-        }
-        Some((t2, version))
+      isClosed match {
+        case true =>
+          logger.warn("make was closed, interrupting the build")
+          throw new MakeException("make was closed")
+        case false =>
+          sourceValue.map { v =>
+            build(v) // build happens here
+              .map(Success(_))
+              .recover { case err => Failure(err) }
+          }.recover { case err => Future {
+            logger.error(f"make ${Make.this.hashCode()} version $version failed with $err", err)
+            Failure(err)
+          }
+          }.get.map { t2 =>
+            logger.debug("build done.")
+            synchronized {
+              (t2, isClosed) match {
+                case (Failure(e:RejectedExecutionException), _) => // do not save make exceptions
+                case (Failure(e:InterruptedException), _) => // do not save make exceptions
+                case (Failure(e:CancellationException), _) => // do not save make exceptions
+                case (Failure(MakeException(e)), _) => // do not save make exceptions
+                case (Failure(_), true) => // could be aborted or interrupted
+                case _ =>
+                  valueStore.update(Some(t2))
+                  versionStore.update(
+                    Some(version).filter(e => valueStore.isDefined)
+                  )
+              }
+            }
+            Some((t2, version))
+          }
       }
     }
     (sourceResult match {
@@ -304,13 +333,16 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
 
   def completed = guard.completed
 
+  // this will block and create new version, if no stored version is available
   class Stale extends Versioned[Value, Version] {
+    def updateOnBackground(version:Option[Version]) ={
+      Make.this.updated(version).foreach { res =>
+        decValue(res)
+      }
+    }
     def updated(version:Option[Version]) = {
       if (version.isDefined && version == versionStore.get ) {
-        // kick the update process on the background, even if requester has the cached version
-        Make.this.updated(version).foreach { res =>
-          decValue(res)
-        }
+        updateOnBackground(version)
         Future.successful(None)
       } else
         valueAndVersion.map(v => Some(v))
@@ -323,10 +355,8 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
     def valueAndVersion : Future[(Try[Value], Version)] = synchronized {
       (valueStore.get, versionStore.get) match {
         case (Some(value), Some(version)) =>
-          val rv = ((value.map(valueRefs.inc), version))
-          Make.this.updated(Some(version)).foreach { res =>
-            decValue(res)
-          }
+          val rv = (value.map(valueRefs.inc), version)
+          updateOnBackground(Some(version))
           Future { rv }
         case _ => Make.this.valueAndVersion
       }
@@ -336,11 +366,43 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
 
   }
 
-  val stale = new Stale()
+  /* this will return None, if no stored version is available.
+   * so, it has a guarantee, that it will return rather immediately (unless the store is slow)
+   * this can be useful for responsive, best-effort system, that uses several dependencies and
+   * that can function and be valuable without all (most?) dependencies.
+   */
+  class Stored extends Versioned[Option[Value], Option[Version]] {
+    def updateOnBackground(version:Option[Version]) = {
+      Make.this.updated(version).foreach { res =>
+        decValue(res)
+      }
+    }
+    def updated(version:Option[Option[Version]]) = {
+      version match {
+        case Some(version) if (version == versionStore.get) =>
+          updateOnBackground(version)
+          Future.successful(None)
+        case _ =>
+          valueAndVersion.map(v => Some(v))
+      }
+    }
+    def valueAndVersion : Future[(Try[Option[Value]], Option[Version])] = synchronized {
+      (valueStore.get, versionStore.get) match {
+        case (Some(value), Some(version)) =>
+          val rv = ((value.map(e => Some(valueRefs.inc(e))), Some(version)))
+          updateOnBackground(Some(version))
+          Future.successful { rv }
+        case _ =>
+          updateOnBackground(None)
+          Future.successful { (Try(None), None) } // nothing stored
+        }
+    }
+    override def get = valueAndVersion.map(_._1.get)
+    def getTry = valueAndVersion.map(_._1)
+  }
 
-  // TODO: remove these
-  def storedVersion = versionStore.get
-  def storedTry = valueStore.get
+  val stale = new Stale()
+  val stored = new Stored()
 
   def getTry = valueAndVersion.map(_._1)
   override def get = valueAndVersion.map(_._1.get)

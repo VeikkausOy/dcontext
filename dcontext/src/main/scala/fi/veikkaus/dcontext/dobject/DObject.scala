@@ -1,7 +1,7 @@
 package fi.veikkaus.dcontext.dobject
 
 import java.io.{Closeable, File}
-import java.util.concurrent.{TimeUnit, TimeoutException}
+import java.util.concurrent.{CancellationException, TimeUnit, TimeoutException}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import fi.veikkaus.dcontext.MutableDContext
@@ -12,7 +12,7 @@ import org.slf4j.LoggerFactory
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scalax.file.Path
 
@@ -24,13 +24,39 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
 
   private val logger = LoggerFactory.getLogger(getClass)
 
+  private var processes = ArrayBuffer[Closeable]()
   private var closeables = ArrayBuffer[Closeable]()
+
+  var isCancelled = false
+
+  def job[T](ex: ExecutionContext, jobName:String)(job : (()=>Unit)=>T): Future[T] = {
+    Future[T] {
+      def checkCancels() = {
+        if (isCancelled) {
+          logger.warn(dname + " job " + jobName + " was cancelled")
+          throw new CancellationException()
+        }
+      }
+      checkCancels
+      val rv = job(checkCancels)
+      checkCancels
+      rv
+    }(ex)
+  }
+  def job[T](ex: ExecutionContext)(j : (()=>Unit)=>T): Future[T] = {
+    job[T](ex, j.toString)(j)
+  }
 
   def bind[T <: Closeable](closeable:T): T = {
     closeables += closeable
     closeable
   }
 
+  /** this should mark all active jobs e.g. in makes to stop */
+  def cancel = {
+    isCancelled = true
+    processes.foreach { _.close }
+  }
 
   val names = mutable.HashSet[String]()
 
@@ -45,6 +71,14 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
     * Dcontext and file system are left intact.
     */
   def close() = {
+    processes.foreach { c =>
+      try {
+        c.close
+      } catch {
+        case e : Exception =>
+          logger.error("closing " + c + " failed.", e)
+      }
+    }
     closeables.foreach { c =>
       try {
         c.close
@@ -106,6 +140,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   (build : Source => Future[Type])
   (implicit valueRefs : ReferenceManagement[Type], sourceRefs : ReferenceManagement[Source]) = {
     val rv = Make(valueStore, versionStore)(source)(build)(valueRefs, sourceRefs)
+    processes += rv // first close makes, in order to prevent creation of new tasks
     bind (new Closeable {
       def close = {
         val res = rv.completed

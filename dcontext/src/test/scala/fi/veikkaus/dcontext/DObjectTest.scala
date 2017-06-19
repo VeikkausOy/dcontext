@@ -619,13 +619,20 @@ class DObjectTest extends TestSuite("dobject") {
       a + b
     }
     }
-    val dec = make("dec", sum zip x) { case (sum, x) => Future {
-      sum - x
+
+    val sum2 = make("sum2", a zip x) { case (a, x) => Future {
+      Thread.sleep(300)
+      a + x
     }
     }
-    val staleDec = make("staleDec", sum.stale zip x) { case (sum, x) => Future {
-      sum - x
+    val dec = make("dec", sum zip x) { case (sum, x) =>
+      Future.successful(sum - x)
     }
+    val staleDec = make("staleDec", sum.stale zip x) { case (sum, x) =>
+      Future.successful(sum - x)
+    }
+    val bestEffortSum = make("bestEffortSum", sum.stored zip sum2.stored) { case (sum1, sum2) =>
+      Future.successful((sum1 ++ sum2).fold(0)(_+_))
     }
 
     override def toString = {
@@ -633,7 +640,9 @@ class DObjectTest extends TestSuite("dobject") {
         f"b:${Await.result(b.get, 5 seconds)}, " +
         f"x:${Await.result(x.get, 5 seconds)}, " +
         f"sum:${Await.result(sum.get, 5 seconds)}, " +
-        f"dec:${Await.result(dec.get, 5 seconds)}}"
+        f"sum2:${Await.result(sum2.get, 5 seconds)}, " +
+        f"dec:${Await.result(dec.get, 5 seconds)}}," +
+        f"bestEffortSum:${Await.result(bestEffortSum.get, 5 seconds)}"
     }
   }
 
@@ -668,6 +677,51 @@ class DObjectTest extends TestSuite("dobject") {
     t.tln
     t.tln("dec is " + Await.result(o.dec.get, 5 seconds))
     t.tln("sum is " + Await.result(o.sum.get, 5 seconds))
+  }
+  })
+
+  test("store")(Tests.inTestContext { (t, c) => {
+    tContext(t, c)
+
+    val o = new SlowTestObject(c)
+    t.tln("created test object")
+    t.tln
+    t.tln("bestEffortSum.stored is " + Await.result(o.bestEffortSum.stored.get, 5 seconds))
+    t.tln("bestEffortSum is " + Await.result(o.bestEffortSum.get, 5 seconds))
+    t.tln
+    t.tln("object is " + o)
+    t.tln
+    tContext(t, c)
+    t.tln
+    t.tln("dec is " + Await.result(o.dec.get, 5 seconds))
+    t.tln("sum is " + Await.result(o.sum.get, 5 seconds))
+    t.tln
+    t.tln("bestEffortSum.stored is " + Await.result(o.bestEffortSum.stored.get, 5 seconds))
+    t.tln("bestEffortSum is " + Await.result(o.bestEffortSum.get, 5 seconds))
+    t.tln
+    o.a.update(4)
+    t.tln("changed a to 4")
+    t.tln
+    t.tln("sum.stored is " + Await.result(o.sum.stored.get, 5 seconds))
+    t.tln("sum2.stored is " + Await.result(o.sum2.stored.get, 5 seconds))
+    t.tln("bestEffortSum.stored is " + Await.result(o.bestEffortSum.stored.get, 5 seconds))
+    t.tln("bestEffortSum is " + Await.result(o.bestEffortSum.get, 5 seconds))
+    t.tln
+    t.tln("wait 200ms for sum to update on backround.")
+    Thread.sleep(200)
+    t.tln
+    t.tln("sum.stored is " + Await.result(o.sum.stored.get, 5 seconds))
+    t.tln("sum2.stored is " + Await.result(o.sum2.stored.get, 5 seconds))
+    t.tln("bestEffortSum.stored is " + Await.result(o.bestEffortSum.stored.get, 5 seconds))
+    t.tln("bestEffortSum is " + Await.result(o.bestEffortSum.get, 5 seconds))
+    t.tln
+    t.tln("wait 300ms for sum2 to update on backround.")
+    Thread.sleep(300)
+    t.tln
+    t.tln("sum.stored is " + Await.result(o.sum.stored.get, 5 seconds))
+    t.tln("sum2.stored is " + Await.result(o.sum2.stored.get, 5 seconds))
+    t.tln("bestEffortSum.stored is " + Await.result(o.bestEffortSum.stored.get, 5 seconds))
+    t.tln("bestEffortSum is " + Await.result(o.bestEffortSum.get, 5 seconds))
   }
   })
 

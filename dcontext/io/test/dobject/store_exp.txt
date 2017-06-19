@@ -1,0 +1,50 @@
+context: 
+created test object
+
+bestEffortSum.stored is None
+bestEffortSum is 0
+
+object is {a:1, b:2, x:3, sum:3, sum2:4, dec:0},bestEffortSum:7
+
+context: 
+  test.a               1
+  test.a.version       0
+  test.b               2
+  test.b.version       0
+  test.bestEffortSum   Success(7)
+  test.bestEffortSum.version (Some((0,0)),Some((0,0))...
+  test.dec             Success(0)
+  test.dec.version     ((0,0),0)
+  test.sum             Success(3)
+  test.sum.version     (0,0)
+  test.sum2            Success(4)
+  test.sum2.version    (0,0)
+  test.x               3
+  test.x.version       0
+
+dec is 0
+sum is 3
+
+bestEffortSum.stored is Some(7)
+bestEffortSum is 7
+
+changed a to 4
+
+sum.stored is Some(3)
+sum2.stored is Some(4)
+bestEffortSum.stored is Some(7)
+bestEffortSum is 7
+
+wait 200ms for sum to update on backround.
+
+sum.stored is Some(6)
+sum2.stored is Some(4)
+bestEffortSum.stored is Some(7)
+bestEffortSum is 10
+
+wait 300ms for sum2 to update on backround.
+
+sum.stored is Some(6)
+sum2.stored is Some(7)
+bestEffortSum.stored is Some(10)
+bestEffortSum is 13
