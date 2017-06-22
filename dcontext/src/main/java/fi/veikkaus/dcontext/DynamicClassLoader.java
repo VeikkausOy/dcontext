@@ -463,7 +463,7 @@ public class DynamicClassLoader extends ClassLoader {
      * Log a message.
      */
     private static void debug(String msg) {
-        logger.debug(msg);
+        //logger.debug(msg);
     }
 
 }

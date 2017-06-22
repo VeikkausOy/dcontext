@@ -206,8 +206,13 @@ case class VersionedPair[TypeA, VersionA, TypeB, VersionB](a:Versioned[TypeA, Ve
   }
   // returns an updated version, if one exists
   override def updated(version: Option[(VersionA, VersionB)]) = {
+    val (v1, v2) = try {
+      (version.map(_._1), version.map(_._2))
+    } catch { // versioning scheme may have changed
+      case e : ClassCastException => (None, None)
+    }
 //    logger.info(f"updated($version) for VersionedPair ${this.hashCode()}")
-    a.updated(version.map(_._1)) zip b.updated(version.map(_._2)) flatMap {
+    a.updated(v1) zip b.updated(v2) flatMap {
       _ match {
         case (None, None) => Future {
           None

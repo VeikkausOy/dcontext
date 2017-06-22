@@ -31,16 +31,27 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
 
   def job[T](ex: ExecutionContext, jobName:String)(job : (()=>Unit)=>T): Future[T] = {
     Future[T] {
-      def checkCancels() = {
-        if (isCancelled) {
-          logger.warn(dname + " job " + jobName + " was cancelled")
-          throw new CancellationException()
+      try {
+        def checkCancels() = {
+          if (isCancelled) {
+            logger.warn(dname + " job " + jobName + " was cancelled")
+            throw new CancellationException()
+          }
         }
+
+        checkCancels
+        logger.info("started job " + jobName)
+        val rv = job(checkCancels)
+        checkCancels
+        logger.info("job " + jobName + " done")
+        rv
+      } catch {
+        case e : CancellationException =>
+          throw e //
+        case e : Exception =>
+          logger.error(dname + " job " + jobName + " failed with " + e, e)
+          throw e
       }
-      checkCancels
-      val rv = job(checkCancels)
-      checkCancels
-      rv
     }(ex)
   }
   def job[T](ex: ExecutionContext)(j : (()=>Unit)=>T): Future[T] = {
@@ -146,11 +157,12 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
       def close = {
         val res = rv.completed
         while (!res.isCompleted) {
+          val waitS = 10*60
           try {
-            Await.result(res, Duration(5*60, TimeUnit.SECONDS))
+            Await.result(res, Duration(waitS, TimeUnit.SECONDS))
           } catch {
             case e : TimeoutException =>
-              logger.error("make failed to complete within 30 second, still waiting", stackTracer)
+              logger.error(f"make failed to complete within $waitS second, still waiting", stackTracer)
           }
         }
       }
