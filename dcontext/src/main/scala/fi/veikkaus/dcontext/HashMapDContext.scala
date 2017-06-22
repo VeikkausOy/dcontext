@@ -14,7 +14,7 @@ class HashMapDContext extends MutableDContext {
   private val data = new HashMap[String, Any]
   private val closeables = new HashMap[String, Closeable]
 
-  override def remove(key: String) {
+  override def remove(key: String) = this.synchronized {
     data.remove (key)
     closeables.get (key) match {
       case Some (c) =>
@@ -30,7 +30,7 @@ class HashMapDContext extends MutableDContext {
     closeables.remove (key)
   }
 
-  override def close {
+  override def close = this.synchronized {
 
     import scala.collection.JavaConversions._
     for ((key, c) <- closeables) {
@@ -48,17 +48,17 @@ class HashMapDContext extends MutableDContext {
     closeables.clear
   }
 
-  override def get[T] (key: String): Option[T] = {
+  override def get[T] (key: String): Option[T] = this.synchronized  {
     data.get (key).map (_.asInstanceOf[T] )
   }
 
-  override def getType (key: String): Option[Class[_]] = {
+  override def getType (key: String): Option[Class[_]] = this.synchronized  {
     data.get (key).map (_.getClass)
   }
 
-  override def keySet = data.keySet
+  override def keySet = this.synchronized { data.keySet.clone() }
 
-  override def put (key: String, value: Any, closer: Option[Closeable]) {
+  override def put (key: String, value: Any, closer: Option[Closeable]) = this.synchronized {
     remove (key)
     data.put (key, value)
     closer match {
