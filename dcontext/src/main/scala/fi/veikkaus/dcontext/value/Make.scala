@@ -25,7 +25,7 @@ class Guard[Value, Version](source:Versioned[Value, Version])(implicit refs:Refe
   private var request : Option[(Option[Version], Future[Option[(Try[Value], Version)]])] = None
 
   override def updated(version: Option[Version]): Future[Option[(Try[Value], Version)]] = synchronized {
-    logger.debug("updated called for " + Guard.this.hashCode())
+//    logger.debug("updated called for " + Guard.this.hashCode())
 
     /*
      * Split behavior based on a request has already been requested before.
@@ -33,7 +33,7 @@ class Guard[Value, Version](source:Versioned[Value, Version])(implicit refs:Refe
      */
     request match {
       case None =>
-        logger.debug("new request for " + version)
+//        logger.debug("new request for " + version)
         val f = source.updated(version).andThen { case res =>
           Guard.this.synchronized {
             request = None
@@ -42,7 +42,7 @@ class Guard[Value, Version](source:Versioned[Value, Version])(implicit refs:Refe
         request = Some((version, f))
         f
       case Some((v, f)) =>
-        logger.debug("request for " + v + " already pending")
+  //      logger.debug("request for " + v + " already pending")
         f.flatMap { _ match {
           case Some((value, newestV)) =>
             Future {
@@ -57,7 +57,7 @@ class Guard[Value, Version](source:Versioned[Value, Version])(implicit refs:Refe
             if (version == v) { // v is the newest version, and this request has it, good
               Future { None }
             } else { // oh no, v is the newest version, but this request doesn't have it -> rerequest
-              logger.debug("redo request")
+    //          logger.debug("redo request")
               updated(version) // redo the request
             }
         }

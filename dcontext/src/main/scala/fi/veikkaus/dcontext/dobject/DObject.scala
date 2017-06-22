@@ -24,7 +24,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  private var processes = ArrayBuffer[Closeable]()
+  private var closeFirst = ArrayBuffer[Closeable]()
   private var closeables = ArrayBuffer[Closeable]()
 
   var isCancelled = false
@@ -58,6 +58,10 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
     job[T](ex, j.toString)(j)
   }
 
+  def bindPriority[T <: Closeable](closeable:T): T = {
+    closeFirst += closeable
+    closeable
+  }
   def bind[T <: Closeable](closeable:T): T = {
     closeables += closeable
     closeable
@@ -66,7 +70,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   /** this should mark all active jobs e.g. in makes to stop */
   def cancel = {
     isCancelled = true
-    processes.foreach { _.close }
+    closeFirst.foreach { _.close }
   }
 
   val names = mutable.HashSet[String]()
@@ -82,7 +86,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
     * Dcontext and file system are left intact.
     */
   def close() = {
-    processes.foreach { c =>
+    closeFirst.foreach { c =>
       try {
         c.close
       } catch {
@@ -151,7 +155,7 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
   (build : Source => Future[Type])
   (implicit valueRefs : ReferenceManagement[Type], sourceRefs : ReferenceManagement[Source]) = {
     val rv = Make(valueStore, versionStore)(source)(build)(valueRefs, sourceRefs)
-    processes += rv // first close makes, in order to prevent creation of new tasks
+    bindPriority(rv)// first close makes, in order to prevent creation of new tasks
     val stackTracer = new RuntimeException("make created here")
     bind (new Closeable {
       def close = {
