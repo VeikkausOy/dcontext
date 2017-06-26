@@ -4,6 +4,7 @@ import java.io.{Closeable, IOException}
 
 import org.slf4j.LoggerFactory
 
+import scala.collection.immutable.HashSet
 import scala.collection.mutable.HashMap
 
 
@@ -56,7 +57,9 @@ class HashMapDContext extends MutableDContext {
     data.get (key).map (_.getClass)
   }
 
-  override def keySet = this.synchronized { data.keySet.clone() }
+  override def keySet = this.synchronized {
+    HashSet.apply[String](data.keySet.toSeq  : _*) // make a copy
+  }
 
   override def put (key: String, value: Any, closer: Option[Closeable]) = this.synchronized {
     remove (key)
