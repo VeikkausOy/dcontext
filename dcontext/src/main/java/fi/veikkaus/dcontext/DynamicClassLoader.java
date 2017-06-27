@@ -310,7 +310,7 @@ public class DynamicClassLoader extends ClassLoader {
                 new Class[] { interfaceClass }, handler);
     }
 
-    private static class LoadedClass {
+    public static class LoadedClass {
         String className;
 
         ReloadableClassLoader loader;
