@@ -25,7 +25,7 @@ abstract class TestSuite(val name:String) extends Contextual(name) with ContextT
 
     t._2(c, tt)
 
-    tt.done
+    tt.done()
   }
 
   def testOps =

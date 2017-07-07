@@ -73,15 +73,17 @@ public class DynamicClassLoader extends ClassLoader {
     private static String pairName(String pkg, String name) {
         return (pkg == null ? name : pkg + "." + name);
     }
-    private void loadClassesRecursively(File dir, String pkg) throws ClassNotFoundException {
-        for (File f : dir.listFiles()) {
-            if (f.isDirectory()) {
+    private void loadClassesRecursively(File path, String pkg) throws ClassNotFoundException {
+ //       System.out.println("loadClassesRecursively(" + path + ", " + pkg + ")");
+        if (path.isDirectory()) {
+            for (File f : path.listFiles()) {
                 loadClassesRecursively(f, pairName(pkg, f.getName()));
             }
-            if (f.isFile() && f.getName().endsWith(".class")) {
-                debug("loading " + f.getName());
-                loadClass(pairName(pkg, f.getName().substring(0, f.getName().length()-".class".length())));
-            }
+        }
+        if (path.isFile() && path.getName().endsWith(".class")) {
+//            System.out.println("loading " + pkg + " at " + path);
+            debug("loading " + path.getName());
+            loadClass(pkg.substring(0, pkg.length()-".class".length()));
         }
     }
     public void loadClassesRecursively(File dir) throws ClassNotFoundException {
@@ -184,6 +186,9 @@ public class DynamicClassLoader extends ClassLoader {
     private Location locateResource(String resource) {
         for (int i = 0; i < loaders.size(); i++) {
             ReloadableClassLoader src = (ReloadableClassLoader) loaders.get(i);
+/*            if (src.classLoader.findResource(resource) != null) {
+                return new Location(src, d)
+            }*/
             for (File dir : src.classPaths) {
                 if (new File(dir, resource).exists()) {
                     return new Location(src, dir);
