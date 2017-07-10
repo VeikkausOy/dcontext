@@ -14,7 +14,6 @@ import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.Duration
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
-import scalax.file.Path
 
 
 /**
@@ -254,6 +253,17 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
     }(new DefaultReferenceManagement[File], sourceRefs)
   }
 
+  def deleteRecursively(path:File) : Unit= {
+    if (path.exists()) {
+      if (path.isDirectory) {
+        path.listFiles().foreach { p =>
+          deleteRecursively(p)
+        }
+      }
+      path.delete
+    }
+  }
+
   /**
     * NOTE: There is a race condition, where abrubt shutdown make erase the
     *       make's stored state, when make is storing the new state.
@@ -268,18 +278,17 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
     addMake(maybeFiltered(new FileNameTryStore(dir), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source) { s =>
       val tmp = new File(dir.getParent, dir.getName + ".tmp")
-      Path(tmp).deleteRecursively()
+      deleteRecursively(tmp)
       tmp.mkdirs()
       writeFile(s, tmp).map { v =>
         val del = new File(dir.getParent, dir.getName + ".del")
-        if (del.exists()) Path(del).deleteRecursively()
+        if (del.exists()) deleteRecursively(del)
         // unsafe non-atomic switch. Try to make it safer by using 'global lock'
         c synchronized {
           dir.renameTo(del)
           tmp.renameTo(dir)
         }
-        Path(del).deleteRecursively()
-
+        deleteRecursively(del)
         //
         dir
       }

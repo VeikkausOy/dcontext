@@ -16,8 +16,6 @@ version := "0.2-SNAPSHOT"
 libraryDependencies ++=
   Seq("jline" % "jline" % "2.12.1",
       "org.scala-lang" % "scala-reflect" % "2.12.2",
-      "com.github.scala-incubator.io" % "scala-io-core_2.11" % "0.4.3",
-      "com.github.scala-incubator.io" % "scala-io-file_2.11" % "0.4.3",
       "org.slf4j" % "slf4j-api" % "1.7.21",
       "org.slf4j" % "slf4j-simple" % "1.7.21" % "test",
       "com.futurice" %% "testtoys" % "0.2" % "test")
