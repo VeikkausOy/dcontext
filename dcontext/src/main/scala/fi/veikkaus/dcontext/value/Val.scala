@@ -15,6 +15,9 @@ trait Val[T] {
 }
 
 object Val {
+  val unit = new Val[Unit] {
+    override def get : Unit = {}
+  }
   def apply[T](f : => T) = new Val[T] {
     override def get = f
   }

@@ -142,10 +142,33 @@ class DObject(val c:MutableDContext, val dname:String) extends Closeable {
     new ContextStore[T](c, allocName(n), closer)
   }
   def contextVar[T](n:String, init : => T, closer : Option[T => Unit] = None) = {
-    new VersionedVar[T](new StoreVar[T](contextStore[T](n, closer), init),
+    new RollingVersionedVar[T](new StoreVar[T](contextStore[T](n, closer), init),
                         new StoreVar[Long](contextStore[Long](n + ".version"), 0))
   }
-  def cvar[T](n:String, init : => T, closer : Option[T => Unit] = None) = contextVar[T](n, init, closer)
+
+  /**
+    * Context value is treated as constant, so it doesn't have any versioning!
+    *
+    * Use this, if you want to store some persistent infrastructure in the dcontext
+    * alongside some shutdown mechanism.
+    */
+  def contextVal[T](n:String, init : => T, closer : Option[T => Unit] = None) = {
+    new VersionedValImpl(
+      new StoreVar[T](contextStore[T](n, closer), init),
+      Val.unit) // constant, so there is no versioning
+  }
+
+  /*
+   * Context property uses the value as version.
+   *
+   *   NOTE: This means, that the value should
+   *         be small and easily serializable
+   */
+  def contextProperty[T](n:String, init : => T, closer : Option[T => Unit] = None) = {
+    new ValueVersionedVar[T](new StoreVar[T](contextStore[T](n, closer), init))
+  }
+
+//  def cvar[T](n:String, init : => T, closer : Option[T => Unit] = None) = versionedContextVar[T](n, init, closer)
   def lazyContextVal[T](n:String, init : => Future[T]) = {
     new AsyncLazyVal[T](new ContextStore[T](c, dname + "." + n), init)
   }
@@ -261,14 +284,26 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
   }
 
   def fileVar[T <: AnyRef](n:String, init : => T) = {
-    new VersionedVar[T](
+    new RollingVersionedVar[T](
       new StoreVar[T](fileStore[T](n), init),
       new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
   }
 
+  def fileProperty[T <: AnyRef](n:String, init : => T) = {
+    new ValueVersionedVar[T](
+      new StoreVar[T](fileStore[T](n), init))
+  }
+
+  /** as an addition to be stored in file, this is cached in context */
   def persistentVar[T](n:String, init : => T) = {
-    new VersionedVar[T](new StoreVar[T](contextAndFileStore[T](n), init),
-                        new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
+    new RollingVersionedVar[T](new StoreVar[T](contextAndFileStore[T](n), init),
+                               new StoreVar[Long](contextAndFileStore[Long](n + ".version"), 0))
+  }
+
+  /** as an addition to be stored in file, this is cached in context */
+  def persistentProperty[T](n:String, init : => T) = {
+    new ValueVersionedVar[T](
+      new StoreVar[T](contextAndFileStore[T](n), init))
   }
 
   /**

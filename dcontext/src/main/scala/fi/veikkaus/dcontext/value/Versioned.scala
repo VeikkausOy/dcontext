@@ -152,15 +152,27 @@ trait Versioned[Value, Version] {
   /**
     * Returns a versioned object of form Versioned[Value, Value]
     */
-  def valueAsVersion(failureVersion:Value) = {
+  def valueAsVersion(failureVersion: => Value) = {
     val self = this
     new Versioned[Value, Value] {
       def updated(version: Option[Value]): Future[Option[(Try[Value], Value)]] = {
         self.updated(None).map { _ match {
-          case Some((_, v)) if Some(v) == version => None // nothing has changed
-          case Some((Success(value), version)) => Some((Success(value), value))
-          case Some((Failure(err), version))   => Some((Failure(err), failureVersion))
+          case Some((Success(value), _)) if Some(value) == version => None // nothing has changed
+          case Some((Success(value), _)) => Some((Success(value), value))
+          case Some((Failure(err), _))   => Some((Failure(err), failureVersion))
           }
+        }
+      }
+    }
+  }
+  def resultAsVersion = {
+    val self = this
+    new Versioned[Value, Try[Value]] {
+      def updated(version: Option[Try[Value]]): Future[Option[(Try[Value], Try[Value])]] = {
+        self.updated(None).map { _ match {
+          case Some((result, _)) if Some(result) == version => None // nothing has changed
+          case Some((result, version)) => Some((result, result))
+        }
         }
       }
     }
@@ -330,10 +342,28 @@ trait VersionedVal[T, V] extends Versioned[T, V] with AsyncVal[T] {
 
 }
 
+class ValueVersionedVar[T](v:Var[T]) extends VersionedVal[T, T] {
+
+  def version = v.get
+  def value = v.get
+
+  override def updated(oldVersion: Option[T]): Future[Option[(Try[T], T)]] = {
+    oldVersion match {
+      case Some(v) if v == version => Future { None }
+      case _ => Future { Some((Success(v.get), version)) }
+    }
+  }
+  def update(value: T): Unit = {
+    v.update(value)
+  }
+  override def get = Future { v.get }
+  def apply() = v.get
+}
+
 /**
   * Used mainly for testing
   */
-class VersionedVar[T](v:Var[T], versionVar:Var[Long] = new HeapVar[Long](0)) extends VersionedVal[T, Long] {
+class RollingVersionedVar[T](v:Var[T], versionVar:Var[Long] = new HeapVar[Long](0)) extends VersionedVal[T, Long] {
   def version = versionVar.get
 
   override def updated(oldVersion: Option[Long]): Future[Option[(Try[T], Long)]] = {
@@ -350,15 +380,17 @@ class VersionedVar[T](v:Var[T], versionVar:Var[Long] = new HeapVar[Long](0)) ext
   def apply() = v.get
 }
 
-class VersionedValImpl[T, V](v:Val[T], versionVal:Val[V]) extends VersionedVal[T, V] {
+class VersionedValImpl[T, V](_value:Val[T], versionVal:Val[V]) extends VersionedVal[T, V] {
+  def value = _value.get
   def version = versionVal.get
   override def updated(oldVersion: Option[V]): Future[Option[(Try[T], V)]] = {
     oldVersion match {
       case Some(v) if v == version => Future { None }
-      case _ => Future { Some((Success(v.get), version)) }
+      case _ => Future { Some((Success(_value.get), version)) }
     }
   }
-  override def get = Future { v.get }
+  override def get = Future { _value.get }
+  def apply() = _value.get
 }
 
 object VersionedVal {
