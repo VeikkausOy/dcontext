@@ -1,13 +1,13 @@
 package fi.veikkaus.dcontext.value
 
 import java.io.{Closeable, File}
-import scala.reflect.runtime.universe._
 
+import scala.reflect.runtime.universe._
 import fi.veikkaus.dcontext.store.Store
 import org.slf4j.LoggerFactory
 
 import scala.collection.mutable
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.{Await, Future, Promise}
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.Duration
@@ -329,6 +329,8 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
   def getTryFast = fastValueAndVersion.map(_._1)
 
   def isUpdating = guard.isUpdating
+
+  def apply() = Await.result(get, Duration.Inf)
 
 }
 
