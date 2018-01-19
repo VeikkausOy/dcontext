@@ -36,11 +36,14 @@ class HeapVar[T](init:T) extends Var[T] {
 trait AsyncVal[T] extends Val[Future[T]] {}
 
 class StoreVar[T](store:Store[T], init: => T) extends Var[T] {
-  store.get match {
-    case None => store.update(Some(init))
-    case Some(v) =>
+  def get = store.get match {
+    case None =>
+      val rv = init
+      store.update(Some(rv))
+      rv
+    case Some(v) => v
   }
-  def get = store.get.get
+
   def update(v:T) = store.update(Some(v))
 }
 

@@ -44,9 +44,9 @@ class DObjectTest extends TestSuite("dobject") {
   }
 
   class TestObject(c: MutableDContext) extends DObject(c, "test") {
-    val a = cvar("a", 1)
-    val b = cvar("b", 2)
-    val x = cvar("x", 3)
+    val a = contextVar("a", 1)
+    val b = contextVar("b", 2)
+    val x = contextVar("x", 3)
 
     val sum = make("sum", a zip b) { case (a, b) => Future {
       a + b
@@ -211,8 +211,8 @@ class DObjectTest extends TestSuite("dobject") {
 
   class BarrierTestObject(c: MutableDContext, t: String => Unit)
     extends DObject(c, "barrier") {
-    val a = cvar("a", 4)
-    val b = cvar("b", 2)
+    val a = contextVar("a", 4)
+    val b = contextVar("b", 2)
 
     val slowA = make("slowA", a) { case a => Future {
       t("doing A...")
@@ -330,8 +330,8 @@ class DObjectTest extends TestSuite("dobject") {
 
     var failing = true
 
-    val a = cvar("a", 4)
-    val b = cvar("b", 2)
+    val a = contextVar("a", 4)
+    val b = contextVar("b", 2)
 
     def filter(e: Throwable) = e match {
       case FragileException(_) => false
@@ -468,10 +468,10 @@ class DObjectTest extends TestSuite("dobject") {
   }
 
   class RefTestObject(c: MutableDContext, t: TestTool, registry: CloseableRegistry) extends DObject(c, "ref-test") {
-    val a = cvar("a", 1)
-    val b = cvar("b", 2)
-    val x = cvar("x", 3)
-    val sleepMs = cvar("sleepMs", 0)
+    val a = contextVar("a", 1)
+    val b = contextVar("b", 2)
+    val x = contextVar("x", 3)
+    val sleepMs = contextVar("sleepMs", 0)
 
     val sum = make("sum", a zip b) { case (a, b) => Future {
       RefCounted(new CloseableValue[Int]("sum", a + b, registry), 1)
@@ -610,9 +610,9 @@ class DObjectTest extends TestSuite("dobject") {
   }
 
   class SlowTestObject(c: MutableDContext) extends DObject(c, "test") {
-    val a = cvar("a", 1)
-    val b = cvar("b", 2)
-    val x = cvar("x", 3)
+    val a = contextVar("a", 1)
+    val b = contextVar("b", 2)
+    val x = contextVar("x", 3)
 
     val sum = make("sum", a zip b) { case (a, b) => Future {
       Thread.sleep(100)

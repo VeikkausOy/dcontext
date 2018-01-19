@@ -4,18 +4,18 @@
 // provides a data context and dynamic class loader for code
 //
 
-scalaVersion := "2.11.7"
-val scalaMajorVersion = "2.11"
+scalaVersion := "2.12.2"
 
-crossScalaVersions := Seq(scalaVersion.value, "2.10.6")
+crossScalaVersions := Seq("2.10.6", "2.11.7")
+
+scalaVersion := "2.12.2"
+val scalaMajorVersion = "2.12"
 
 version := "0.2-SNAPSHOT"
 
 libraryDependencies ++=
-  Seq("jline" % "jline" % "2.14",
-      "org.scala-lang" % "scala-reflect" % "2.11.7",
-      "com.github.scala-incubator.io" %% "scala-io-core" % "0.4.3",
-      "com.github.scala-incubator.io" %% "scala-io-file" % "0.4.3",
+  Seq("jline" % "jline" % "2.12.1",
+      "org.scala-lang" % "scala-reflect" % "2.12.2",
       "org.slf4j" % "slf4j-api" % "1.7.21",
       "org.slf4j" % "slf4j-simple" % "1.7.21" % "test",
       "com.futurice" %% "testtoys" % "0.2" % "test")

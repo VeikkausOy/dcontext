@@ -7,7 +7,7 @@ import com.futurice.testtoys._
 
 import scala.collection.mutable.ArrayBuffer
 
-abstract class TestSuite(val name:String) extends Contextual(name) with ContextTask {
+class TestSuite(val name:String) extends Contextual(name) with ContextTask {
 
   type TestMethod = (MutableDContext, TestTool)=>Unit
   type TestCase = (String, TestMethod)

@@ -1,0 +1,5 @@
+<<<<<<< HEAD
+sbt.version=1.0.0
+=======
+sbt.version=0.13.15
+>>>>>>> scala-2.12
