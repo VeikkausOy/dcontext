@@ -1,6 +1,8 @@
 package fi.veikkaus.dcontext.store
 
 import java.io._
+import java.nio.file.StandardCopyOption.{ATOMIC_MOVE, REPLACE_EXISTING}
+import java.nio.file.{Files, StandardCopyOption}
 
 import fi.veikkaus.dcontext.MutableDContext
 import fi.veikkaus.dcontext.store.IoUtil.getClass
@@ -35,7 +37,8 @@ object IoUtil {
     } finally {
       out.close
     }
-    tmpFile.renameTo(file)
+
+    Files.exists(Files.move(tmpFile.toPath, file.toPath, ATOMIC_MOVE, REPLACE_EXISTING))
   }
 }
 

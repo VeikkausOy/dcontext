@@ -1,6 +1,10 @@
 package fi.veikkaus.dcontext.dobject
 
-import java.io.{Closeable, File}
+import java.io.{Closeable, File, IOException}
+import java.nio.file.Files.move
+import java.nio.file.StandardCopyOption.{ATOMIC_MOVE, REPLACE_EXISTING}
+import java.nio.file.attribute.BasicFileAttributes
+import java.nio.file._
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -247,22 +251,35 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
       val tmp = new File(file.getParent, file.getName + ".tmp")
       tmp.delete()
       writeFile(s, tmp).map { v =>
-        tmp.renameTo(file); // atomic replace
+        move(tmp.toPath, file.toPath, ATOMIC_MOVE, REPLACE_EXISTING)
         file
       }
     }(new DefaultReferenceManagement[File], sourceRefs)
   }
 
-  def deleteRecursively(path:File) : Unit= {
-    if (path.exists()) {
-      if (path.isDirectory) {
-        path.listFiles().foreach { p =>
-          deleteRecursively(p)
-        }
+  def deleteRecursively(path: Path) : Unit = {
+    Files.walkFileTree(path, new SimpleFileVisitor[Path]() {
+      override def postVisitDirectory(dir: Path, exc: IOException): FileVisitResult = {
+        Files.delete(dir)
+        FileVisitResult.CONTINUE
       }
-      path.delete
+
+      override def visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult = {
+        Files.delete(file)
+        FileVisitResult.CONTINUE
+      }
+    })
+  }
+
+  private def moveFileAtomically(from: Path, to: Path): Path = {
+    val movedPath = move(from, to, ATOMIC_MOVE, REPLACE_EXISTING)
+    if (Files.exists(movedPath)) {
+      movedPath
+    } else {
+      throw new RuntimeException(s"File move '${from}' -> '${to}' failed. Result file does not exist after move")
     }
   }
+
 
   /**
     * NOTE: There is a race condition, where abrubt shutdown make erase the
@@ -277,16 +294,18 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
     val dir = allocFile(n)
     addMake(maybeFiltered(new FileNameTryStore(dir), throwableFilter),
       contextAndFileStore[Version](f"$n.version"))(source) { s =>
-      val tmp = new File(dir.getParent, dir.getName + ".tmp")
+      val tmp = Paths.get(dir.getParent, s"${dir.getName}.tmp")
       deleteRecursively(tmp)
-      tmp.mkdirs()
+      Files.createDirectories(tmp.getParent)
       writeFile(s, tmp).map { v =>
-        val del = new File(dir.getParent, dir.getName + ".del")
-        if (del.exists()) deleteRecursively(del)
+        val del = Paths.get(dir.getParent, s"${dir.getName}.del")
+        if (Files.exists(del)) {
+          deleteRecursively(del)
+        }
         // unsafe non-atomic switch. Try to make it safer by using 'global lock'
         c synchronized {
-          dir.renameTo(del)
-          tmp.renameTo(dir)
+          moveFileAtomically(dir.toPath, del)
+          moveFileAtomically(tmp, dir.toPath)
         }
         deleteRecursively(del)
         //
