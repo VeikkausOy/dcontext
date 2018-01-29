@@ -4,11 +4,11 @@ import java.io.{Closeable, File, IOException}
 import java.nio.file.Files.move
 import java.nio.file.StandardCopyOption.{ATOMIC_MOVE, REPLACE_EXISTING}
 import java.nio.file.attribute.BasicFileAttributes
-import java.nio.file._
+import java.nio.file.{Files, Paths, Path, SimpleFileVisitor, FileVisitResult}
 import java.util.concurrent.{TimeUnit, TimeoutException}
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import fi.veikkaus.dcontext.MutableDContext
+import fi.veikkaus.dcontext._
 import fi.veikkaus.dcontext.store._
 import fi.veikkaus.dcontext.value._
 import org.slf4j.LoggerFactory
@@ -297,7 +297,7 @@ class FsDObject(c:MutableDContext, name:String, val dir:File) extends DObject(c,
       val tmp = Paths.get(dir.getParent, s"${dir.getName}.tmp")
       deleteRecursively(tmp)
       Files.createDirectories(tmp.getParent)
-      writeFile(s, tmp).map { v =>
+      writeFile(s, tmp.toFile).map { v =>
         val del = Paths.get(dir.getParent, s"${dir.getName}.del")
         if (Files.exists(del)) {
           deleteRecursively(del)
