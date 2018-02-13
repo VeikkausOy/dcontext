@@ -1,6 +1,7 @@
 target
 .idea
 .dcontext_history
+*.orig
 *~
 *_out.txt
 *_out
