@@ -4,7 +4,7 @@ created test object
 bestEffortSum.stored is None
 bestEffortSum is 0
 
-object is {a:1, b:2, x:3, sum:3, sum2:4, dec:0},bestEffortSum:7
+object is {a:1, b:2, x:3, sum:3, sum2:4, dec:0, bestEffortSum:7}
 
 context: 
   test.a               1

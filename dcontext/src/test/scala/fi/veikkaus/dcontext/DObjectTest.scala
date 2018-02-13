@@ -641,8 +641,8 @@ class DObjectTest extends TestSuite("dobject") {
         f"x:${Await.result(x.get, 5 seconds)}, " +
         f"sum:${Await.result(sum.get, 5 seconds)}, " +
         f"sum2:${Await.result(sum2.get, 5 seconds)}, " +
-        f"dec:${Await.result(dec.get, 5 seconds)}}," +
-        f"bestEffortSum:${Await.result(bestEffortSum.get, 5 seconds)}"
+        f"dec:${Await.result(dec.get, 5 seconds)}, " +
+        f"bestEffortSum:${Await.result(bestEffortSum.get, 5 seconds)}}"
     }
   }
 

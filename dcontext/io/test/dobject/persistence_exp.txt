@@ -130,14 +130,11 @@ dec try is Failure(java.lang.ArithmeticException: / by zero)
 double try is Failure(java.lang.ArithmeticException: / by zero)
 
 context: 
-  persistent.a         4
   persistent.a.version 1
-  persistent.b         0
   persistent.b.version 1
   persistent.dec       Failure(java.lang.Arithm...
   persistent.dec.version ((1,1),0)
   persistent.div       Failure(java.lang.Arithm...
   persistent.div.version (1,1)
   persistent.file.bin.version ((1,1),0)
-  persistent.x         3
   persistent.x.version 0
