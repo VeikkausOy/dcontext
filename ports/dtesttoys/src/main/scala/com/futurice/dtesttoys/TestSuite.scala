@@ -1,6 +1,6 @@
 package com.futurice.dtesttoys
 
-import java.io.{BufferedReader, File, FileReader}
+import java.io._
 
 import fi.veikkaus.dcontext._
 import com.futurice.testtoys._
@@ -28,7 +28,20 @@ class TestSuite(val name:String) extends Contextual(name) with ContextTask {
   def runTest(c:MutableDContext, t:TestCase) = {
     val tt = new TestTool(new File(new File(rootPath(c), name), t._1).getPath)
 
-    t._2(c, tt)
+    try {
+      t._2(c, tt)
+    } catch {
+      case e : Exception =>
+        val str = new StringWriter()
+        val out = new PrintWriter(str)
+        e.printStackTrace(out)
+        out.flush()
+        tt.tln
+        tt.tln("test threw an exception")
+        tt.tln
+        tt.tln(str.toString)
+        tt.fail
+    }
 
     var quit = false
     var res = tt.done(Seq(tt.diffToolAction(),("[q]uit", "q", (_, _, _) => {
