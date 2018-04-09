@@ -4,9 +4,10 @@ import fi.veikkaus.dcontext.MutableDContext
 import fi.veikkaus.dcontext.store.Store
 import org.slf4j.LoggerFactory
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration.Duration
 
 /**
   * What is the actual need?
@@ -180,6 +181,8 @@ trait Versioned[Value, Version] {
 
   def get = updated(None).map(_.get._1.get)
   def getVersion = updated(None).map(_.get._2)
+
+  def apply() = Await.result(get, Duration.Inf)
 
 }
 
@@ -357,7 +360,7 @@ class ValueVersionedVar[T](v:Var[T]) extends VersionedVal[T, T] {
     v.update(value)
   }
   override def get = Future { v.get }
-  def apply() = v.get
+  override def apply() = v.get
 }
 
 /**
@@ -377,7 +380,7 @@ class RollingVersionedVar[T](v:Var[T], versionVar:Var[Long] = new HeapVar[Long](
     v.update(value)
   }
   override def get = Future { v.get }
-  def apply() = v.get
+  override def apply() = v.get
 }
 
 class VersionedValImpl[T, V](_value:Val[T], versionVal:Val[V]) extends VersionedVal[T, V] {
@@ -390,7 +393,7 @@ class VersionedValImpl[T, V](_value:Val[T], versionVal:Val[V]) extends Versioned
     }
   }
   override def get = Future { _value.get }
-  def apply() = _value.get
+  override def apply() = _value.get
 }
 
 object VersionedVal {

@@ -409,8 +409,6 @@ class Make[Value, Source, Version](val source : Versioned[Source, Version],
 
   def isUpdating = guard.isUpdating
 
-  def apply() = Await.result(get, Duration.Inf)
-
 }
 
 object Make {
